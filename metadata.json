@@ -1,0 +1,6 @@
+{
+  "name": "PayStory",
+  "description": "Every payment has a story. Your app helps users remember it. Track the story behind every transaction.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -46,6 +46,10 @@ fun SettingsScreen(viewModel: ExpenseViewModel) {
         context.checkSelfPermission(android.Manifest.permission.RECEIVE_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
         context.checkSelfPermission(android.Manifest.permission.READ_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED
     ) }
+    val powerManager = remember(context) { context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager }
+    var isIgnoringBatteryOptimizations by remember {
+        mutableStateOf(powerManager?.isIgnoringBatteryOptimizations(context.packageName) ?: false)
+    }
     var showCategoryViewer by remember { mutableStateOf(false) }
 
     // Repetitive service state polling inside UI
@@ -59,6 +63,11 @@ fun SettingsScreen(viewModel: ExpenseViewModel) {
                     context.checkSelfPermission(android.Manifest.permission.READ_SMS) == android.content.pm.PackageManager.PERMISSION_GRANTED
             if (isSmsAccessGranted != smsEnabled) {
                 isSmsAccessGranted = smsEnabled
+            }
+            val pm = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+            val batteryExempted = pm?.isIgnoringBatteryOptimizations(context.packageName) ?: false
+            if (isIgnoringBatteryOptimizations != batteryExempted) {
+                isIgnoringBatteryOptimizations = batteryExempted
             }
             kotlinx.coroutines.delay(1200)
         }
@@ -242,6 +251,64 @@ fun SettingsScreen(viewModel: ExpenseViewModel) {
                         text = if (isSmsAccessGranted) "Authorized" else "Unauthorized",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = if (isSmsAccessGranted) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+
+        // Option 2C: Battery Optimization exemption status
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    try {
+                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                            data = android.net.Uri.parse("package:${context.packageName}")
+                        }
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        try {
+                            val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                            context.startActivity(intent)
+                        } catch (ex: Exception) {
+                            android.util.Log.e("SettingsScreen", "Failed to launch battery settings", ex)
+                        }
+                    }
+                }
+                .testTag("battery_optimization_setting"),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp))
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = "Battery Optimization",
+                        tint = if (isIgnoringBatteryOptimizations) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+                    )
+                    Column {
+                        Text("Battery Saver Exemption", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
+                        Text("Exempt PayStory to prevent Android from pausing background readers", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    }
+                }
+                
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isIgnoringBatteryOptimizations) MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = if (isIgnoringBatteryOptimizations) "Unrestricted" else "Optimized",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = if (isIgnoringBatteryOptimizations) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }

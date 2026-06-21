@@ -45,7 +45,9 @@ fun HomeScreen(viewModel: ExpenseViewModel) {
     val budgets by viewModel.budgets.collectAsState()
     
     val todaySpending = viewModel.getTodaySpending(transactions)
-    val monthSpending = viewModel.getThisMonthSpending(transactions)
+    val overallLimit by viewModel.overallBudgetLimit.collectAsState()
+    val overallPeriod by viewModel.overallBudgetPeriod.collectAsState()
+    val periodSpending = viewModel.getPeriodSpending(transactions, overallPeriod)
     val totalCount = transactions.size
 
     val currentUser by viewModel.currentUser.collectAsState()
@@ -189,21 +191,20 @@ fun HomeScreen(viewModel: ExpenseViewModel) {
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "This Month",
+                        text = if (overallPeriod == "WEEK") "This Week" else "This Month",
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                     )
                     Column {
                         Text(
-                            text = "₹${"%,.0f".format(monthSpending)}",
+                            text = "₹${"%,.0f".format(periodSpending)}",
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         // Simple leftover calculation
-                        val currentLimitSum = 50000.0 // Default reference ceiling matching HTML ₹50,000 threshold
-                        val leftAmount = maxOf(0.0, currentLimitSum - monthSpending)
+                        val leftAmount = maxOf(0.0, overallLimit - periodSpending)
                         Text(
-                            text = "₹${"%,.0f".format(leftAmount)} left",
+                            text = "₹${"%,.0f".format(leftAmount)} left of ₹${"%,.0f".format(overallLimit)}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                         )
@@ -583,47 +584,26 @@ fun HomeScreen(viewModel: ExpenseViewModel) {
                         )
                     }
                 } else {
-                    // Default Mockup representation matching the HTML spec
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("🍔 ", fontSize = 16.sp)
+                            Text("📊 ", fontSize = 16.sp)
                             Text(
-                                text = "Food Budget",
+                                text = "Category Budget Status",
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onBackground
                             )
                         }
-                        Text(
-                            text = "85% reached",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.error // #F2B8B5
-                        )
                     }
-                    
-                    // Linear Progress Bar matching HTML "w-[85%]"
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .background(
-                                color = MaterialTheme.colorScheme.outlineVariant, // #49454F
-                                shape = RoundedCornerShape(100.dp)
-                            )
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(0.85f)
-                                .fillMaxHeight()
-                                .background(
-                                    color = MaterialTheme.colorScheme.error, // #F2B8B5
-                                    shape = RoundedCornerShape(100.dp)
-                                )
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "No category budgets set yet. Tap here to define maximum spend limits.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                    )
                 }
             }
         }

@@ -67,6 +67,39 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     private val _isDarkMode = MutableStateFlow(sharedPrefs.getBoolean("dark_mode", true)) // default dark mode for premium look!
     val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
 
+    private val _overallBudgetLimit = MutableStateFlow(sharedPrefs.getFloat("overall_budget_limit", 50000f).toDouble())
+    val overallBudgetLimit: StateFlow<Double> = _overallBudgetLimit.asStateFlow()
+
+    private val _overallBudgetPeriod = MutableStateFlow(sharedPrefs.getString("overall_budget_period", "MONTH") ?: "MONTH")
+    val overallBudgetPeriod: StateFlow<String> = _overallBudgetPeriod.asStateFlow()
+
+    fun updateOverallBudget(limit: Double, period: String) {
+        _overallBudgetLimit.value = limit
+        _overallBudgetPeriod.value = period
+        sharedPrefs.edit()
+            .putFloat("overall_budget_limit", limit.toFloat())
+            .putString("overall_budget_period", period)
+            .apply()
+    }
+
+    fun getPeriodSpending(txList: List<Transaction>, period: String): Double {
+        val startTime = Calendar.getInstance().apply {
+            if (period == "WEEK") {
+                set(Calendar.DAY_OF_WEEK, firstDayOfWeek)
+            } else {
+                set(Calendar.DAY_OF_MONTH, 1)
+            }
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        return txList.filter {
+            it.timestamp >= startTime && it.transactionType == "SENT"
+        }.sumOf { it.amount }
+    }
+
     // Transactions Lists & Filters
     val allTransactions: StateFlow<List<Transaction>> = repository.getAllTransactions()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

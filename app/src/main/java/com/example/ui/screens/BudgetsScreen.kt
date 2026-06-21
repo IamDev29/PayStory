@@ -44,8 +44,16 @@ fun BudgetsScreen(viewModel: ExpenseViewModel) {
     val allTx by viewModel.allTransactions.collectAsState()
     val alertHistory by viewModel.alerts.collectAsState()
 
+    val overallLimit by viewModel.overallBudgetLimit.collectAsState()
+    val overallPeriod by viewModel.overallBudgetPeriod.collectAsState()
+    val periodSpending = viewModel.getPeriodSpending(allTx, overallPeriod)
+
     var showBudgetForm by remember { mutableStateOf<Category?>(null) }
     var inputLimitAmount by remember { mutableStateOf("") }
+
+    var showOverallBudgetDialog by remember { mutableStateOf(false) }
+    var inputOverallLimit by remember { mutableStateOf("") }
+    var inputOverallPeriod by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -66,6 +74,109 @@ fun BudgetsScreen(viewModel: ExpenseViewModel) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
         )
+
+        // OVERALL BUDGET HEADLINE CARD
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+            ),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+            )
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Overall Spend Budget",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Based on your configured ${overallPeriod.lowercase()}ly frequency",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            inputOverallLimit = overallLimit.toInt().toString()
+                            inputOverallPeriod = overallPeriod
+                            showOverallBudgetDialog = true
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.testTag("configure_overall_budget_button")
+                    ) {
+                        Text("Configure", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                val spentRatio = if (overallLimit > 0) (periodSpending / overallLimit).toFloat() else 0f
+                val spentPercent = (spentRatio * 100).toInt()
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Column {
+                        Text(
+                            text = "₹${"%,.0f".format(periodSpending)} spent of ₹${"%,.0f".format(overallLimit)}",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = "${maxOf(0.0, overallLimit - periodSpending).let { "%,.0f".format(it) }} Left",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                        )
+                    }
+                    Text(
+                        text = "$spentPercent% reached",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = if (spentRatio >= 1f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Custom Linear Progress bar
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            shape = RoundedCornerShape(100.dp)
+                        )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(minOf(1f, spentRatio))
+                            .fillMaxHeight()
+                            .background(
+                                color = if (spentRatio >= 1f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                shape = RoundedCornerShape(100.dp)
+                            )
+                    )
+                }
+            }
+        }
 
         // Set limits prompt
         Text(
@@ -399,6 +510,120 @@ fun BudgetsScreen(viewModel: ExpenseViewModel) {
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text("Save Limit")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showOverallBudgetDialog) {
+        Dialog(onDismissRequest = { showOverallBudgetDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Configure Overall Budget",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    OutlinedTextField(
+                        value = inputOverallLimit,
+                        onValueChange = { inputOverallLimit = it },
+                        label = { Text("Budget Limit (₹)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("overall_limit_input")
+                    )
+
+                    // Period Selection: Month vs Week Segmented Control
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Budget Period Frequency",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            listOf("MONTH", "WEEK").forEach { period ->
+                                val isSelected = inputOverallPeriod == period
+                                Card(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { inputOverallPeriod = period }
+                                        .testTag("budget_period_card_$period"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isSelected) {
+                                            MaterialTheme.colorScheme.primaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                        }
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (isSelected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent
+                                    )
+                                ) {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
+                                    ) {
+                                        Text(
+                                            text = if (period == "WEEK") "Weekly" else "Monthly",
+                                            style = MaterialTheme.typography.labelLarge.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { showOverallBudgetDialog = false },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Cancel")
+                        }
+
+                        Button(
+                            onClick = {
+                                val limitVal = inputOverallLimit.toDoubleOrNull() ?: 50000.0
+                                viewModel.updateOverallBudget(limitVal, inputOverallPeriod)
+                                showOverallBudgetDialog = false
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Text("Save")
                         }
                     }
                 }

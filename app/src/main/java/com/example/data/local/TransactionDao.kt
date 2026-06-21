@@ -30,6 +30,9 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE userId = :userId")
     suspend fun getTransactionsSync(userId: String): List<Transaction>
 
+    @Query("SELECT * FROM transactions WHERE userId = :userId AND source = :source AND amount = :amount AND timestamp >= :minTimestamp AND timestamp <= :maxTimestamp")
+    suspend fun findRecentTransactions(userId: String, source: String, amount: Double, minTimestamp: Long, maxTimestamp: Long): List<Transaction>
+
     @Query("SELECT * FROM transactions WHERE transactionId = :transactionId")
     fun getTransactionById(transactionId: String): Flow<Transaction?>
 

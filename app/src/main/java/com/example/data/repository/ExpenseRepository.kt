@@ -191,6 +191,10 @@ class ExpenseRepository(
         return dao.getTransactionsSync(userId)
     }
 
+    suspend fun findRecentTransactions(userId: String, source: String, amount: Double, minTimestamp: Long, maxTimestamp: Long): List<Transaction> {
+        return dao.findRecentTransactions(userId, source, amount, minTimestamp, maxTimestamp)
+    }
+
     suspend fun saveTransaction(tx: Transaction) {
         dao.insertTransaction(tx)
         if (tx.transactionType == "SENT") {

@@ -220,11 +220,19 @@ fun HomeScreen(viewModel: ExpenseViewModel) {
             exit = slideOutVertically() + fadeOut()
         ) {
             val pendingTx = pendingReviews.first()
-            var selectedReviewCategory by remember(pendingTx.transactionId) { mutableStateOf(Category.FOOD.name) }
-            var reviewDescription by remember(pendingTx.transactionId) { mutableStateOf("") }
+            val suggestion = remember(pendingTx.transactionId) { viewModel.getMerchantSuggestion(pendingTx.merchantName) }
+            var selectedReviewCategory by remember(pendingTx.transactionId) { mutableStateOf(suggestion.category) }
+            var reviewDescription by remember(pendingTx.transactionId) { mutableStateOf(suggestion.story) }
             var isExpanded by remember(pendingTx.transactionId) { mutableStateOf(false) }
+
+            // Dynamic color for confidence badge
+            val confidenceColor = when (suggestion.confidence) {
+                "HIGH" -> MaterialTheme.colorScheme.primary
+                "MEDIUM" -> MaterialTheme.colorScheme.tertiary
+                else -> MaterialTheme.colorScheme.error
+            }
             
-            // Background: #49454F, Corner Radius: 24.dp (rounded-3xl)
+            // Background: Secondary container, Corner Radius: 24.dp
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -239,7 +247,7 @@ fun HomeScreen(viewModel: ExpenseViewModel) {
                         .fillMaxWidth()
                         .height(IntrinsicSize.Min)
                 ) {
-                    // Left border highlight: #D0BCFF (4dp bar)
+                    // Left border highlight: 4dp primary bar
                     Box(
                         modifier = Modifier
                             .width(4.dp)
@@ -258,82 +266,94 @@ fun HomeScreen(viewModel: ExpenseViewModel) {
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // "New Detection" Badge
-                            Box(
-                                modifier = Modifier
-                                    .background(
-                                        color = MaterialTheme.colorScheme.primary,
-                                        shape = RoundedCornerShape(100.dp)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primary,
+                                            shape = RoundedCornerShape(100.dp)
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "NEW PAYSTORY",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 0.5.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onPrimary
                                     )
-                                    .padding(horizontal = 8.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "NEW DETECTION",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 0.5.sp
-                                    ),
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
+                                }
+
+                                // Confidence score indicator
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            color = confidenceColor.copy(alpha = 0.15f),
+                                            shape = RoundedCornerShape(6.dp)
+                                        )
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "${suggestion.confidence} MATCH",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 8.sp,
+                                            fontWeight = FontWeight.Black
+                                        ),
+                                        color = confidenceColor
+                                    )
+                                }
                             }
+
                             Text(
-                                text = "Just now",
+                                text = "Pending Review",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
                             )
                         }
 
                         // Core Details Row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                            Text(
+                                text = "₹${"%,.0f".format(pendingTx.amount)} to ${pendingTx.merchantName}",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            val mappedCategory = Category.values().firstOrNull { it.name == selectedReviewCategory } ?: Category.OTHERS
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(mappedCategory.icon, fontSize = 14.sp)
                                 Text(
-                                    text = "₹${"%,.0f".format(pendingTx.amount)} to ${pendingTx.merchantName}",
-                                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onBackground
-                                )
-                                Text(
-                                    text = if (reviewDescription.isEmpty()) "\"Add a description for this...\"" else "\"$reviewDescription\"",
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                                    ),
+                                    text = "Auto-Category: ${mappedCategory.displayName}",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                                     color = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
                             }
-
-                            if (!isExpanded) {
-                                Button(
-                                    onClick = { isExpanded = true },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = MaterialTheme.colorScheme.onPrimary
-                                    ),
-                                    shape = RoundedCornerShape(16.dp),
-                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
-                                ) {
-                                    Text(
-                                        text = "Add Context",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
-                                    )
-                                }
-                            }
+                            Text(
+                                text = "Story Suggestion: \"$reviewDescription\"",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                ),
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                            )
                         }
 
                         // Expanded controls for tagging context
-                        AnimatedVisibility(visible = isExpanded) {
+                        if (isExpanded) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(top = 16.dp)
+                                    .padding(top = 8.dp)
                             ) {
+                                Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), modifier = Modifier.padding(bottom = 12.dp))
+
                                 // Category Selection
                                 Text(
-                                    text = "Why did you spend this money?",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    text = "Correct Category Match",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                                     modifier = Modifier.padding(bottom = 8.dp)
                                 )
                                 
@@ -367,36 +387,74 @@ fun HomeScreen(viewModel: ExpenseViewModel) {
 
                                 Spacer(modifier = Modifier.height(16.dp))
 
-                                // Action buttons
+                                // Action buttons inside expanded Edit screen
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     OutlinedButton(
-                                        onClick = { 
-                                            viewModel.skipTransaction(pendingTx) 
-                                            isExpanded = false
-                                        },
+                                        onClick = { isExpanded = false },
                                         modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors(
-                                            contentColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
-                                        )
+                                        shape = RoundedCornerShape(12.dp)
                                     ) {
-                                        Text("Skip")
+                                        Text("Cancel")
                                     }
 
                                     Button(
                                         onClick = {
-                                            val desc = reviewDescription.ifBlank { "Uncategorized payment" }
+                                            val desc = reviewDescription.ifBlank { "Uncategorized purchase" }
                                             viewModel.reviewTransaction(pendingTx, selectedReviewCategory, desc)
                                             isExpanded = false
                                         },
                                         modifier = Modifier.weight(1f),
                                         shape = RoundedCornerShape(12.dp)
                                     ) {
-                                        Text("Save Context")
+                                        Text("Save Match")
                                     }
+                                }
+                            }
+                        } else {
+                            // Quick One-Tap Action Buttons (Save, Edit, Skip)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { viewModel.skipTransaction(pendingTx) },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        contentColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                                    )
+                                ) {
+                                    Text("Skip")
+                                }
+
+                                Button(
+                                    onClick = { isExpanded = true },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.secondary,
+                                        contentColor = MaterialTheme.colorScheme.onSecondary
+                                    )
+                                ) {
+                                    Text("Edit")
+                                }
+
+                                Button(
+                                    onClick = {
+                                        val desc = reviewDescription.ifBlank { "Uncategorized purchase" }
+                                        viewModel.reviewTransaction(pendingTx, selectedReviewCategory, desc)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                ) {
+                                    Text("Save")
                                 }
                             }
                         }

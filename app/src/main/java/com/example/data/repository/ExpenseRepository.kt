@@ -9,6 +9,7 @@ import com.example.data.models.BudgetAlert
 import com.example.data.models.Category
 import com.example.data.models.Transaction
 import com.example.data.models.User
+import com.example.data.models.MerchantMapping
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -279,5 +280,18 @@ class ExpenseRepository(
                 timestamp = System.currentTimeMillis()
             ))
         }
+    }
+
+    // Merchant mapping operations
+    fun getAllMerchantMappings(): Flow<List<MerchantMapping>> = dao.getAllMerchantMappings()
+
+    suspend fun getAllMerchantMappingsSync(): List<MerchantMapping> = dao.getAllMerchantMappingsSync()
+
+    suspend fun saveMerchantMapping(mapping: MerchantMapping) {
+        dao.insertMerchantMapping(mapping)
+    }
+
+    suspend fun deleteMerchantMapping(merchantName: String) {
+        dao.deleteMerchantMapping(merchantName)
     }
 }

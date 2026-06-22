@@ -43,3 +43,10 @@ data class BudgetAlert(
     val message: String,
     val timestamp: Long
 )
+
+@Entity(tableName = "merchant_mappings")
+data class MerchantMapping(
+    @PrimaryKey val merchantName: String, // Normalized lowercase trimmed name
+    val category: String,
+    val story: String
+)

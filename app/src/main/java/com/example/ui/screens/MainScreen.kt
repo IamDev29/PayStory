@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -111,9 +112,17 @@ fun MainScreen(viewModel: ExpenseViewModel) {
     // Modal Bottom Sheet for unreviewed transactions
     if (pendingReviews.isNotEmpty()) {
         val tx = pendingReviews.first()
-        var selectedCategory by remember(tx.transactionId) { mutableStateOf(Category.FOOD.name) }
-        var descriptionText by remember(tx.transactionId) { mutableStateOf("") }
+        val suggestion = remember(tx.transactionId) { viewModel.getMerchantSuggestion(tx.merchantName) }
+        var selectedCategory by remember(tx.transactionId) { mutableStateOf(suggestion.category) }
+        var descriptionText by remember(tx.transactionId) { mutableStateOf(suggestion.story) }
+        var isEditing by remember(tx.transactionId) { mutableStateOf(false) }
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+        val confidenceColor = when (suggestion.confidence) {
+            "HIGH" -> MaterialTheme.colorScheme.primary
+            "MEDIUM" -> MaterialTheme.colorScheme.tertiary
+            else -> MaterialTheme.colorScheme.error
+        }
 
         ModalBottomSheet(
             onDismissRequest = {
@@ -131,20 +140,48 @@ fun MainScreen(viewModel: ExpenseViewModel) {
                     .padding(bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text(
-                    text = "New payment story detected",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                Text(
-                    text = "Help future you remember why this occurred.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "New PayStory Detected",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Matching intelligently based on user behaviors.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                color = confidenceColor.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(6.dp)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "${suggestion.confidence} MATCH",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black
+                            ),
+                            color = confidenceColor
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().background(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(12.dp)
+                    ).padding(14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -162,73 +199,138 @@ fun MainScreen(viewModel: ExpenseViewModel) {
                     }
                     Text(
                         text = if (tx.transactionType == "SENT") "-₹${"%,.0f".format(tx.amount)}" else "+₹${"%,.0f".format(tx.amount)}",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold),
                         color = if (tx.transactionType == "SENT") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                     )
                 }
 
-                Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                // Category selection
-                Text(
-                    text = "Select Category",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                val currentMappedCategory = Category.values().firstOrNull { it.name == selectedCategory } ?: Category.OTHERS
+                
+                // Show Suggestions Section
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Category.values().filter { it != Category.UNCATEGORIZED }.forEach { cat ->
-                        val isSelected = selectedCategory == cat.name
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { selectedCategory = cat.name },
-                            label = { Text("${cat.icon} ${cat.displayName}") }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(currentMappedCategory.icon, fontSize = 16.sp)
+                        Text(
+                            text = "Suggested Category: ${currentMappedCategory.displayName}",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
+                    Text(
+                        text = "Suggested Story: \"$descriptionText\"",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
-                // Description field
-                OutlinedTextField(
-                    value = descriptionText,
-                    onValueChange = { descriptionText = it },
-                    placeholder = { Text("What did you buy? e.g. Lunch, taxi...") },
-                    label = { Text("Add Notes/Description") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true
-                )
+                if (isEditing) {
+                    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                    // Category selection
+                    Text(
+                        text = "Correct Category",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Category.values().filter { it != Category.UNCATEGORIZED }.forEach { cat ->
+                            val isSelected = selectedCategory == cat.name
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedCategory = cat.name },
+                                label = { Text("${cat.icon} ${cat.displayName}") }
+                            )
+                        }
+                    }
+
+                    // Description field
+                    OutlinedTextField(
+                        value = descriptionText,
+                        onValueChange = { descriptionText = it },
+                        placeholder = { Text("What did you buy? e.g. Lunch, taxi...") },
+                        label = { Text("Custom Notes/Description") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Actions: Skip / Save
+                // Actions: Skip / Edit or Cancel / Save
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    OutlinedButton(
-                        onClick = {
-                            viewModel.skipTransaction(tx)
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Skip")
-                    }
+                    if (isEditing) {
+                        OutlinedButton(
+                            onClick = { isEditing = false },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Cancel")
+                        }
 
-                    Button(
-                        onClick = {
-                            val desc = descriptionText.ifBlank { "" }
-                            viewModel.reviewTransaction(tx, selectedCategory, desc)
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Save")
+                        Button(
+                            onClick = {
+                                val desc = descriptionText.ifBlank { "Uncategorized purchase" }
+                                viewModel.reviewTransaction(tx, selectedCategory, desc)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Save Match")
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.skipTransaction(tx)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Skip")
+                        }
+
+                        Button(
+                            onClick = {
+                                isEditing = true
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondary,
+                                contentColor = MaterialTheme.colorScheme.onSecondary
+                            )
+                        ) {
+                            Text("Edit")
+                        }
+
+                        Button(
+                            onClick = {
+                                val desc = descriptionText.ifBlank { "Uncategorized purchase" }
+                                viewModel.reviewTransaction(tx, selectedCategory, desc)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        ) {
+                            Text("Save")
+                        }
                     }
                 }
             }

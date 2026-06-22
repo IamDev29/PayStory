@@ -11,6 +11,7 @@ import com.example.data.models.BudgetAlert
 import com.example.data.models.Category
 import com.example.data.models.Transaction
 import com.example.data.models.User
+import com.example.data.models.MerchantMapping
 import com.example.data.repository.ExpenseRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -36,9 +37,118 @@ sealed class MainTab(val name: String) {
     object Settings : MainTab("Settings")
 }
 
+data class MerchantSuggestion(
+    val category: String,
+    val story: String,
+    val confidence: String // "HIGH", "MEDIUM", "LOW"
+)
+
 class ExpenseViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: ExpenseRepository = (application as ExpenseApplication).repository
+
+    // PayStory V2 Merchant Mapping States
+    val merchantMappings: StateFlow<List<MerchantMapping>> = repository.getAllMerchantMappings()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun normalizeMerchantName(name: String): String {
+        return name.trim().lowercase()
+            .replace(Regex("[^a-zA-Z0-9\\s]"), "")
+            .replace(Regex("\\s+"), " ")
+    }
+
+    fun getMerchantSuggestion(rawName: String): MerchantSuggestion {
+        val normalized = normalizeMerchantName(rawName)
+        val mappings = merchantMappings.value
+
+        if (normalized.isBlank()) {
+            return MerchantSuggestion("OTHERS", "General purchase", "LOW")
+        }
+
+        // 1. Exact match in DB learned mappings
+        val exactDb = mappings.firstOrNull { normalizeMerchantName(it.merchantName) == normalized }
+        if (exactDb != null) {
+            return MerchantSuggestion(exactDb.category, exactDb.story, "HIGH")
+        }
+
+        // 2. Substring match in DB learned mappings
+        val substringDb = mappings.firstOrNull {
+            val mappingNorm = normalizeMerchantName(it.merchantName)
+            mappingNorm.isNotEmpty() && (normalized.contains(mappingNorm) || mappingNorm.contains(normalized))
+        }
+        if (substringDb != null) {
+            return MerchantSuggestion(substringDb.category, substringDb.story, "HIGH")
+        }
+
+        // 3. Predefined keyword matches
+        val predefinedKeys = listOf(
+            "starbucks" to Category.FOOD, "mcdonald" to Category.FOOD, "zomato" to Category.FOOD, "swiggy" to Category.FOOD,
+            "kfc" to Category.FOOD, "burger king" to Category.FOOD, "pizza hut" to Category.FOOD, "restaurant" to Category.FOOD,
+            "cafe" to Category.FOOD, "bistro" to Category.FOOD, "diner" to Category.FOOD, "bakery" to Category.FOOD,
+            "food" to Category.FOOD, "blinkit" to Category.GROCERY, "zepto" to Category.GROCERY, "mart" to Category.GROCERY,
+            "grocery" to Category.GROCERY, "supermarket" to Category.GROCERY, "grofers" to Category.GROCERY, "walmart" to Category.GROCERY,
+            "spencers" to Category.GROCERY, "aldi" to Category.GROCERY, "costco" to Category.GROCERY, "amazon" to Category.SHOPPING,
+            "flipkart" to Category.SHOPPING, "myntra" to Category.SHOPPING, "meesho" to Category.SHOPPING, "shopping" to Category.SHOPPING,
+            "zara" to Category.SHOPPING, "h&m" to Category.SHOPPING, "mall" to Category.SHOPPING, "nykaa" to Category.SHOPPING,
+            "uber" to Category.TRAVEL, "ola" to Category.TRAVEL, "rapido" to Category.TRAVEL, "irctc" to Category.TRAVEL,
+            "metro" to Category.TRAVEL, "train" to Category.TRAVEL, "flight" to Category.TRAVEL, "taxi" to Category.TRAVEL,
+            "bus" to Category.TRAVEL, "makemytrip" to Category.TRAVEL, "travel" to Category.TRAVEL, "fuel" to Category.FUEL,
+            "petrol" to Category.FUEL, "diesel" to Category.FUEL, "hpcl" to Category.FUEL, "bpcl" to Category.FUEL,
+            "iocl" to Category.FUEL, "shell" to Category.FUEL, "gas" to Category.FUEL, "netflix" to Category.ENTERTAINMENT,
+            "spotify" to Category.ENTERTAINMENT, "youtube" to Category.ENTERTAINMENT, "hotstar" to Category.ENTERTAINMENT,
+            "disney" to Category.ENTERTAINMENT, "pvr" to Category.ENTERTAINMENT, "cinema" to Category.ENTERTAINMENT,
+            "movies" to Category.ENTERTAINMENT, "show" to Category.ENTERTAINMENT, "bookmyshow" to Category.ENTERTAINMENT,
+            "bill" to Category.BILLS, "electricity" to Category.BILLS, "water" to Category.BILLS, "telecom" to Category.BILLS,
+            "jio" to Category.BILLS, "airtel" to Category.BILLS, "gpay" to Category.BILLS, "recharge" to Category.BILLS,
+            "broadband" to Category.BILLS, "wi-fi" to Category.BILLS, "rent" to Category.RENT, "room" to Category.RENT,
+            "flat" to Category.RENT, "landlord" to Category.RENT, "housing" to Category.RENT, "pg" to Category.RENT,
+            "school" to Category.EDUCATION, "college" to Category.EDUCATION, "university" to Category.EDUCATION,
+            "udemy" to Category.EDUCATION, "coursera" to Category.EDUCATION, "course" to Category.EDUCATION,
+            "books" to Category.EDUCATION, "tuition" to Category.EDUCATION, "education" to Category.EDUCATION,
+            "doctor" to Category.HEALTH, "pharmacy" to Category.HEALTH, "hospital" to Category.HEALTH,
+            "medicine" to Category.HEALTH, "clinic" to Category.HEALTH, "dentist" to Category.HEALTH,
+            "apollo" to Category.HEALTH, "netmeds" to Category.HEALTH, "health" to Category.HEALTH,
+            "fitness" to Category.HEALTH
+        )
+
+        for ((keyword, cat) in predefinedKeys) {
+            if (normalized.contains(keyword)) {
+                val story = when (cat) {
+                    Category.FOOD -> "Dining out/Food order"
+                    Category.GROCERY -> "Weekly grocery shopping"
+                    Category.SHOPPING -> "Online Shopping purchase"
+                    Category.TRAVEL -> "Commute / Cab ride / Travel"
+                    Category.FUEL -> "Refueling vehicle"
+                    Category.BILLS -> "Monthly utility / subscription bill"
+                    Category.RENT -> "Monthly accommodation rent"
+                    Category.EDUCATION -> "Educational course / books purchase"
+                    Category.HEALTH -> "Medical care / pharmacy purchase"
+                    Category.ENTERTAINMENT -> "Entertainment subscription / ticket"
+                    else -> "Purchase at ${rawName}"
+                }
+                return MerchantSuggestion(cat.name, story, "MEDIUM")
+            }
+        }
+
+        // 4. Default fallback
+        return MerchantSuggestion("OTHERS", "Purchase at ${rawName}", "LOW")
+    }
+
+    fun learnOrUpdateMerchantMapping(merchantName: String, category: String, story: String) {
+        viewModelScope.launch {
+            val normalized = normalizeMerchantName(merchantName)
+            if (normalized.isNotEmpty()) {
+                repository.saveMerchantMapping(MerchantMapping(normalized, category, story))
+            }
+        }
+    }
+
+    fun deleteMerchantMapping(merchantName: String) {
+        viewModelScope.launch {
+            val normalized = normalizeMerchantName(merchantName)
+            repository.deleteMerchantMapping(normalized)
+        }
+    }
 
     // Navigation and Tab States
     val currentUser: StateFlow<User?> = repository.currentUser
@@ -315,6 +425,10 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
                 isReviewed = true
             )
             repository.saveTransaction(updatedTx)
+            val normalized = normalizeMerchantName(tx.merchantName)
+            if (normalized.isNotEmpty()) {
+                repository.saveMerchantMapping(MerchantMapping(normalized, category, description))
+            }
         }
     }
 

@@ -6,6 +6,9 @@ import android.provider.Settings
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -20,6 +23,8 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -51,6 +56,7 @@ fun SettingsScreen(viewModel: ExpenseViewModel) {
         mutableStateOf(powerManager?.isIgnoringBatteryOptimizations(context.packageName) ?: false)
     }
     var showCategoryViewer by remember { mutableStateOf(false) }
+    var showMerchantMappingsViewer by remember { mutableStateOf(false) }
 
     // Repetitive service state polling inside UI
     LaunchedEffect(Unit) {
@@ -76,7 +82,8 @@ fun SettingsScreen(viewModel: ExpenseViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Headers
@@ -157,6 +164,34 @@ fun SettingsScreen(viewModel: ExpenseViewModel) {
                     Column {
                         Text("Manage Categories", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
                         Text("Review predefined spend categories & templates", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
+                    }
+                }
+                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f))
+            }
+        }
+
+        // Option 1.5: PayStory Smart Mappings
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showMerchantMappingsViewer = true }
+                .testTag("manage_merchant_mappings_setting"),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp))
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("🧠", fontSize = 24.sp)
+                    Column {
+                        Text("PayStory Smart Mappings", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
+                        Text("Edit or delete automated merchant recommendations", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
                     }
                 }
                 Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f))
@@ -350,7 +385,7 @@ fun SettingsScreen(viewModel: ExpenseViewModel) {
             }
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(24.dp))
 
         // Option 4: Sign out button
         OutlinedButton(
@@ -441,6 +476,270 @@ fun SettingsScreen(viewModel: ExpenseViewModel) {
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
                         textAlign = TextAlign.Center
                     )
+                }
+            }
+        }
+    }
+
+    // MERCHANT MAPPINGS DIALOG VIEWER
+    if (showMerchantMappingsViewer) {
+        val mappings by viewModel.merchantMappings.collectAsState()
+        var editTargetMerchant by remember { mutableStateOf<String?>(null) }
+        var editCategory by remember { mutableStateOf(Category.FOOD.name) }
+        var editStory by remember { mutableStateOf("") }
+        
+        var isAddingNew by remember { mutableStateOf(false) }
+        var newMerchant by remember { mutableStateOf("") }
+        var newCategory by remember { mutableStateOf(Category.FOOD.name) }
+        var newStory by remember { mutableStateOf("") }
+
+        Dialog(onDismissRequest = { showMerchantMappingsViewer = false }) {
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.9f)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(20.dp)
+                        .fillMaxSize()
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                "Smart Rules Mapping",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                "Auto-pilot classification mappings",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+                            )
+                        }
+                        IconButton(onClick = { showMerchantMappingsViewer = false }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close")
+                        }
+                    }
+
+                    Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), modifier = Modifier.padding(bottom = 12.dp))
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // SECTION A: ADD NEW RULE CONTROL
+                        if (isAddingNew) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text("Add Intelligence Rule", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                                    
+                                    OutlinedTextField(
+                                        value = newMerchant,
+                                        onValueChange = { newMerchant = it },
+                                        placeholder = { Text("Merchant name (e.g. Google)") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+
+                                    Text("Suggested Category", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Category.values().filter { it != Category.UNCATEGORIZED }.forEach { cat ->
+                                            FilterChip(
+                                                selected = newCategory == cat.name,
+                                                onClick = { newCategory = cat.name },
+                                                label = { Text("${cat.icon} ${cat.displayName}") }
+                                            )
+                                        }
+                                    }
+
+                                    OutlinedTextField(
+                                        value = newStory,
+                                        onValueChange = { newStory = it },
+                                        placeholder = { Text("Suggested story text (e.g. GSuite Subscription)") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(onClick = { isAddingNew = false }) {
+                                            Text("Cancel")
+                                        }
+                                        Button(
+                                            onClick = {
+                                                if (newMerchant.isNotBlank() && newStory.isNotBlank()) {
+                                                    viewModel.learnOrUpdateMerchantMapping(newMerchant, newCategory, newStory)
+                                                    newMerchant = ""
+                                                    newStory = ""
+                                                    isAddingNew = false
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text("Add")
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = { isAddingNew = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("➕ Add Smart Rule Mapping")
+                            }
+                        }
+
+                        // SECTION B: RENDER EXISTING RULES
+                        if (mappings.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "No learned Smart Rules yet.\nMake a payment correction to auto-pilot mappings!",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        } else {
+                            mappings.forEach { mapping ->
+                                val isEditingThis = editTargetMerchant == mapping.merchantName
+
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isEditingThis) MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f) 
+                                                         else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                    ),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        if (isEditingThis) {
+                                            Text("Editing: ${mapping.merchantName}", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.primary)
+                                            
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .horizontalScroll(rememberScrollState()),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Category.values().filter { it != Category.UNCATEGORIZED }.forEach { cat ->
+                                                    FilterChip(
+                                                        selected = editCategory == cat.name,
+                                                        onClick = { editCategory = cat.name },
+                                                        label = { Text("${cat.icon} ${cat.displayName}") }
+                                                    )
+                                                }
+                                            }
+
+                                            OutlinedTextField(
+                                                value = editStory,
+                                                onValueChange = { editStory = it },
+                                                singleLine = true,
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.End
+                                            ) {
+                                                TextButton(onClick = { editTargetMerchant = null }) {
+                                                    Text("Cancel")
+                                                }
+                                                Button(
+                                                    onClick = {
+                                                        viewModel.learnOrUpdateMerchantMapping(mapping.merchantName, editCategory, editStory)
+                                                        editTargetMerchant = null
+                                                    },
+                                                    shape = RoundedCornerShape(8.dp)
+                                                ) {
+                                                    Text("Save")
+                                                }
+                                            }
+                                        } else {
+                                            val matchedCategory = Category.values().firstOrNull { it.name == mapping.category } ?: Category.OTHERS
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = mapping.merchantName.uppercase(),
+                                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        Text(matchedCategory.icon, fontSize = 12.sp)
+                                                        Text(
+                                                            text = matchedCategory.displayName,
+                                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = "Story: \"${mapping.story}\"",
+                                                        style = MaterialTheme.typography.bodySmall.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
+                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                                    )
+                                                }
+
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    IconButton(onClick = {
+                                                        editTargetMerchant = mapping.merchantName
+                                                        editCategory = mapping.category
+                                                        editStory = mapping.story
+                                                    }) {
+                                                        Icon(Icons.Default.Edit, contentDescription = "Edit Rule", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                                    }
+                                                    IconButton(onClick = {
+                                                        viewModel.deleteMerchantMapping(mapping.merchantName)
+                                                    }) {
+                                                        Icon(Icons.Default.Delete, contentDescription = "Delete Rule", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

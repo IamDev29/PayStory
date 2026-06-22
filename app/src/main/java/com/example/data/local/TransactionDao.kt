@@ -5,6 +5,7 @@ import com.example.data.models.Budget
 import com.example.data.models.BudgetAlert
 import com.example.data.models.Transaction
 import com.example.data.models.User
+import com.example.data.models.MerchantMapping
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -70,4 +71,20 @@ interface TransactionDao {
 
     @Query("DELETE FROM budget_alerts")
     suspend fun clearAllAlerts()
+
+    // Merchant Mapping Operations
+    @Query("SELECT * FROM merchant_mappings ORDER BY merchantName ASC")
+    fun getAllMerchantMappings(): Flow<List<MerchantMapping>>
+
+    @Query("SELECT * FROM merchant_mappings ORDER BY merchantName ASC")
+    suspend fun getAllMerchantMappingsSync(): List<MerchantMapping>
+
+    @Query("SELECT * FROM merchant_mappings WHERE merchantName = :merchantName")
+    suspend fun getMerchantMappingSync(merchantName: String): MerchantMapping?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMerchantMapping(mapping: MerchantMapping)
+
+    @Query("DELETE FROM merchant_mappings WHERE merchantName = :merchantName")
+    suspend fun deleteMerchantMapping(merchantName: String)
 }

@@ -8,10 +8,11 @@ import com.example.data.models.Budget
 import com.example.data.models.BudgetAlert
 import com.example.data.models.Transaction
 import com.example.data.models.User
+import com.example.data.models.MerchantMapping
 
 @Database(
-    entities = [User::class, Transaction::class, Budget::class, BudgetAlert::class],
-    version = 2,
+    entities = [User::class, Transaction::class, Budget::class, BudgetAlert::class, MerchantMapping::class],
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

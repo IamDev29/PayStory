@@ -1,18 +1,68 @@
+# ==============================================================================
+# PayStory Android Gradle .gitignore File
+# ==============================================================================
+
+# Built variants and outputs
+/build/
+app/build/
+.gradle/
+build-outputs/
+.build-outputs/
+captures/
+*.apk
+*.ap_
+*.aab
+*.dex
+
+# Kotlin / Java compiler outputs
+*.class
+*.klib
+*.module
+/bin/
+/gen/
+.kotlin/
+kotlin-daemon.log
+
+# IntelliJ / Android Studio IDE configuration
+.idea/
 *.iml
-.gradle
-.kotlin
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
+*.ipr
+*.iws
+.navigation/
+.cxx/
+.externalNativeBuild/
 local.properties
+assetWizardSettings.xml
+navEditor.xml
+caches/
+compiler.xml
+workspace.xml
+modules.xml
+
+# macOS System Files
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+
+# Windows Thumbnail Databases
+Thumbs.db
+ehthumbs.db
+Log.txt
+
+# Secrets, Keystores, and Credentials
 .env
-debug.keystore
+!.env.example
+*.keystore
+*.jks
+*.p12
+*.pem
+private_key.pepk
+/debug.keystore.base64
+
+# Roborazzi Visual Regression test screenshot baselines (uncomment if you want to ignore them)
+# app/src/test/screenshots/
+
+# Log Files
+*.log

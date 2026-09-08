@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -15,16 +16,16 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,633 +35,673 @@ import com.example.ui.viewmodel.ExpenseViewModel
 import com.example.ui.viewmodel.MainTab
 import com.example.ui.theme.*
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(viewModel: ExpenseViewModel) {
     val transactions by viewModel.allTransactions.collectAsState()
     val pendingReviews by viewModel.pendingReviewTransactions.collectAsState()
     val budgets by viewModel.budgets.collectAsState()
-    
+
     val todaySpending = viewModel.getTodaySpending(transactions)
     val overallLimit by viewModel.overallBudgetLimit.collectAsState()
     val overallPeriod by viewModel.overallBudgetPeriod.collectAsState()
     val periodSpending = viewModel.getPeriodSpending(transactions, overallPeriod)
-    val totalCount = transactions.size
-
     val currentUser by viewModel.currentUser.collectAsState()
+
+    var isBalanceHidden by remember { mutableStateOf(false) }
+
+    // Total balance observed from ViewModel
+    val currentBalance by viewModel.totalBalance.collectAsState()
+    val totalIncome = transactions.filter { it.transactionType == "RECEIVED" }.sumOf { it.amount }
+    val totalExpense = transactions.filter { it.transactionType == "SENT" }.sumOf { it.amount }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+            .padding(bottom = PayStoryTokens.Space2Xl),
+        verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceBase)
     ) {
-        // Welcoming Title Header
+        // TOP APP BAR
+        PayStoryTopAppBar(
+            userInitials = currentUser?.name?.take(2)?.uppercase()?.ifBlank { "PS" } ?: "PS",
+            notificationCount = pendingReviews.size,
+            onNotificationClick = {
+                if (pendingReviews.isNotEmpty()) {
+                    // stays on screen to review
+                }
+            },
+            onProfileClick = {
+                viewModel.changeTab(MainTab.Settings)
+            }
+        )
+
+        val greetingText = remember {
+            val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+            when (hour) {
+                in 4..11 -> "Good morning"
+                in 12..16 -> "Good afternoon"
+                else -> "Good evening"
+            }
+        }
+        val userGreetingName = currentUser?.name?.takeIf { it.isNotBlank() } ?: "there"
+
+        // WELCOME & OVERVIEW HEADER ROW
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = PayStoryTokens.SpaceLg),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1.0f)) {
+            Column {
                 Text(
-                    text = "PayStory",
-                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp),
+                    text = "$greetingText, $userGreetingName",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    text = "Track the story behind every transaction.",
+                    text = "Financial overview",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            // User Profile Avatar on Right
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-                modifier = Modifier.size(40.dp)
+            PayStoryPill(
+                text = "Live Sync",
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                contentColor = MaterialTheme.colorScheme.primary,
+                dotColor = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        // TOTAL BALANCE CARD
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = PayStoryTokens.SpaceLg),
+            shape = PayStoryTokens.Radius2Xl,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+        ) {
+            Column(
+                modifier = Modifier.padding(PayStoryTokens.SpaceLg),
+                verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceMd)
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    val initials = currentUser?.name?.take(2)?.uppercase() ?: "JS"
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = initials,
-                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                        text = "TOTAL BALANCE",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    IconButton(
+                        onClick = { isBalanceHidden = !isBalanceHidden },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isBalanceHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = "Toggle Balance",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                // Balance Value
+                Text(
+                    text = if (isBalanceHidden) "••••••••••" else "₹${"%,.2f".format(currentBalance)}",
+                    style = MaterialTheme.typography.headlineLarge.copy(
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = (-0.5).sp
+                    ),
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+
+                Spacer(modifier = Modifier.height(PayStoryTokens.SpaceXs))
+
+                // Mini Stat Tiles: Spent vs Income
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceMd)
+                ) {
+                    // Spent Tile
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = PayStoryTokens.RadiusLg,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                    ) {
+                        Column(modifier = Modifier.padding(PayStoryTokens.SpaceMd)) {
+                            Text(
+                                text = "Spent this month",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(PayStoryTokens.SpaceXs))
+                            Text(
+                                text = "-₹${"%,.2f".format(periodSpending)}",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(PayStoryTokens.SpaceXs))
+                            val debitsCount = transactions.count { it.transactionType == "SENT" }
+                            Text(
+                                text = "$debitsCount debit${if (debitsCount == 1) "" else "s"}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+
+                    // Income Tile
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = PayStoryTokens.RadiusLg,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                    ) {
+                        Column(modifier = Modifier.padding(PayStoryTokens.SpaceMd)) {
+                            Text(
+                                text = "Monthly Income",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(PayStoryTokens.SpaceXs))
+                            Text(
+                                text = "+₹${"%,.2f".format(totalIncome)}",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(PayStoryTokens.SpaceXs))
+                            val creditsCount = transactions.count { it.transactionType == "RECEIVED" }
+                            Text(
+                                text = "$creditsCount credit${if (creditsCount == 1) "" else "s"}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // CATEGORY BUDGETS PREVIEW SECTION
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceMd)
+        ) {
+            val currentMonthLabel = remember { SimpleDateFormat("MMM", Locale.getDefault()).format(Date()) }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = PayStoryTokens.SpaceLg),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
+                ) {
+                    Text(
+                        text = "Category Budgets",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    PayStoryPill(
+                        text = currentMonthLabel,
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                TextButton(
+                    onClick = { viewModel.changeTab(MainTab.Budgets) },
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text(
+                        text = "View all >",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
-        }
 
-        // Quick Simulate & Actions Row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Welcome back, ${currentUser?.name ?: "User"}",
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            // Simulate Pay Button (Fully functional)
-            Button(
-                onClick = { viewModel.simulateAutoTransactionArrival() },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.testTag("simulate_payment_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.FlashOn,
-                    contentDescription = "Simulate payment",
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Simulate Pay", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold))
-            }
-        }
-
-        // SPENDING HUD METRIC TILES
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Card 1: Today's spending (Background: #313033, Label: #D0BCFF, Corners: rounded-3xl)
-            Card(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(112.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(
+            if (budgets.isEmpty()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = PayStoryTokens.RadiusLg,
+                    border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
                     modifier = Modifier
-                        .padding(16.dp)
-                        .fillMaxSize(),
-                    verticalArrangement = Arrangement.SpaceBetween
+                        .fillMaxWidth()
+                        .padding(horizontal = PayStoryTokens.SpaceLg)
+                        .clickable { viewModel.changeTab(MainTab.Budgets) }
                 ) {
-                    Text(
-                        text = "Today",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.primary // #D0BCFF
-                    )
-                    Column {
-                        Text(
-                            text = "₹${"%,.0f".format(todaySpending)}",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        val todayCount = transactions.filter { 
-                            val sdf = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
-                            sdf.format(Date(it.timestamp)) == sdf.format(Date())
-                        }.size
-                        Text(
-                            text = "$todayCount transaction${if (todayCount == 1) "" else "s"}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    Row(
+                        modifier = Modifier.padding(PayStoryTokens.SpaceMd),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceMd)
+                    ) {
+                        Text("🎯", fontSize = 22.sp)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Set Category Budgets",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Add limits to keep expenses controlled",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Add Budget",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
-            }
-
-            // Card 2: This month's spending (Background: #EADDFF, Text: #21005D, Corners: rounded-3xl)
-            Card(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(112.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
-            ) {
-                Column(
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .fillMaxSize(),
-                    verticalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = if (overallPeriod == "WEEK") "This Week" else "This Month",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                    )
-                    Column {
-                        Text(
-                            text = "₹${"%,.0f".format(periodSpending)}",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        // Simple leftover calculation
-                        val leftAmount = maxOf(0.0, overallLimit - periodSpending)
-                        Text(
-                            text = "₹${"%,.0f".format(leftAmount)} left of ₹${"%,.0f".format(overallLimit)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-            }
-        }
-
-        // TRANSACTION REVIEW SECTION (Satisfies "Transaction Review Flow")
-        AnimatedVisibility(
-            visible = pendingReviews.isNotEmpty(),
-            enter = slideInVertically() + fadeIn(),
-            exit = slideOutVertically() + fadeOut()
-        ) {
-            val pendingTx = pendingReviews.first()
-            val suggestion = remember(pendingTx.transactionId) { viewModel.getMerchantSuggestion(pendingTx.merchantName) }
-            var selectedReviewCategory by remember(pendingTx.transactionId) { mutableStateOf(suggestion.category) }
-            var reviewDescription by remember(pendingTx.transactionId) { mutableStateOf(suggestion.story) }
-            var isExpanded by remember(pendingTx.transactionId) { mutableStateOf(false) }
-
-            // Dynamic color for confidence badge
-            val confidenceColor = when (suggestion.confidence) {
-                "HIGH" -> MaterialTheme.colorScheme.primary
-                "MEDIUM" -> MaterialTheme.colorScheme.tertiary
-                else -> MaterialTheme.colorScheme.error
-            }
-            
-            // Background: Secondary container, Corner Radius: 24.dp
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("in_app_notification_card"),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                )
-            ) {
+            } else {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(IntrinsicSize.Min)
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = PayStoryTokens.SpaceLg),
+                    horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceMd)
                 ) {
-                    // Left border highlight: 4dp primary bar
-                    Box(
-                        modifier = Modifier
-                            .width(4.dp)
-                            .fillMaxHeight()
-                            .background(MaterialTheme.colorScheme.primary)
-                    )
-                    
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(16.dp)
-                    ) {
-                        // Title Indicator Row
+                    budgets.forEach { budget ->
+                        val catObj = Category.values().firstOrNull { it.name == budget.category } ?: Category.OTHERS
+                        val spent = viewModel.getCategoryBudgetSpent(budget.category, transactions)
+                        val percent = if (budget.limitAmount > 0) ((spent / budget.limitAmount) * 100).toInt() else 0
+                        val dotColor = when (catObj) {
+                            Category.FOOD -> CategoryOrange
+                            Category.GROCERY -> CategoryGold
+                            Category.SHOPPING -> CategoryPink
+                            Category.TRAVEL -> CategoryBlue
+                            Category.FUEL -> CategorySkyBlue
+                            Category.BILLS -> CategoryPurple
+                            Category.RENT -> CategoryRed
+                            Category.EDUCATION -> CategoryTeal
+                            Category.HEALTH -> CategoryRed
+                            Category.ENTERTAINMENT -> CategoryIndigo
+                            else -> CategorySlate
+                        }
+                        HomeBudgetMiniCard(
+                            categoryName = catObj.displayName,
+                            dotColor = dotColor,
+                            spentAmount = spent,
+                            limitAmount = budget.limitAmount,
+                            percentage = percent
+                        )
+                    }
+                }
+            }
+        }
+
+        // TRANSACTION REVIEW SECTION (In-App Notification Card)
+        val activePendingTx = pendingReviews.firstOrNull()
+        var lastPendingTx by remember { mutableStateOf<Transaction?>(null) }
+        LaunchedEffect(activePendingTx) {
+            if (activePendingTx != null) {
+                lastPendingTx = activePendingTx
+            }
+        }
+        val pendingTx = activePendingTx ?: lastPendingTx
+
+        AnimatedVisibility(
+            visible = activePendingTx != null && pendingTx != null,
+            enter = slideInVertically() + fadeIn(),
+            exit = slideOutVertically() + fadeOut()
+        ) {
+            if (pendingTx != null) {
+                val suggestion = remember(pendingTx.transactionId) { viewModel.getMerchantSuggestion(pendingTx.merchantName) }
+                var selectedReviewCategory by remember(pendingTx.transactionId) { mutableStateOf(suggestion.category) }
+                var reviewDescription by remember(pendingTx.transactionId) { mutableStateOf(suggestion.story) }
+                var isExpanded by remember(pendingTx.transactionId) { mutableStateOf(false) }
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = PayStoryTokens.SpaceLg)
+                        .testTag("in_app_notification_card"),
+                    shape = PayStoryTokens.Radius2Xl,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                ) {
+                    Column(modifier = Modifier.padding(PayStoryTokens.SpaceLg)) {
+                        // Header Badges
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Box(
-                                    modifier = Modifier
-                                        .background(
-                                            color = MaterialTheme.colorScheme.primary,
-                                            shape = RoundedCornerShape(100.dp)
-                                        )
-                                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = "NEW PAYSTORY",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            letterSpacing = 0.5.sp
-                                        ),
-                                        color = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                }
-
-                                // Confidence score indicator
-                                Box(
-                                    modifier = Modifier
-                                        .background(
-                                            color = confidenceColor.copy(alpha = 0.15f),
-                                            shape = RoundedCornerShape(6.dp)
-                                        )
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = "${suggestion.confidence} MATCH",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 8.sp,
-                                            fontWeight = FontWeight.Black
-                                        ),
-                                        color = confidenceColor
-                                    )
-                                }
-                            }
-
-                            Text(
-                                text = "Pending Review",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
-                            )
-                        }
-
-                        // Core Details Row
-                        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                            Text(
-                                text = "₹${"%,.0f".format(pendingTx.amount)} to ${pendingTx.merchantName}",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                            
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            val mappedCategory = Category.values().firstOrNull { it.name == selectedReviewCategory } ?: Category.OTHERS
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(mappedCategory.icon, fontSize = 14.sp)
-                                Text(
-                                    text = "Auto-Category: ${mappedCategory.displayName}",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                            Row(horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)) {
+                                PayStoryPill(
+                                    text = "✨ NEW PAYSTORY • REVIEW",
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                PayStoryPill(
+                                    text = "✔ HIGH MATCH",
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor = MaterialTheme.colorScheme.primary
                                 )
                             }
+
                             Text(
-                                text = "Story Suggestion: \"$reviewDescription\"",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                                ),
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                                text = "Today, 4:15 PM",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
-                        // Expanded controls for tagging context
+                        Spacer(modifier = Modifier.height(PayStoryTokens.SpaceMd))
+
+                        // Merchant & Amount Row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = pendingTx.merchantName.ifEmpty { "Blue Tokai Coffee Roasters" },
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                Text(
+                                    text = "via UPI (${pendingTx.source.uppercase()})",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            Text(
+                                text = "-₹${"%,.2f".format(pendingTx.amount)}",
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(PayStoryTokens.SpaceSm))
+
+                        // Tag details
+                        val mappedCategory = Category.values().firstOrNull { it.name == selectedReviewCategory } ?: Category.FOOD
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(CategoryOrange)
+                            )
+                            Text(
+                                text = "${mappedCategory.displayName} • Auto-detected",
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        if (reviewDescription.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(PayStoryTokens.SpaceXs))
+                            Text(
+                                text = "\"$reviewDescription\"",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            )
+                        }
+
+                        // Expanded Category / Story Editor
                         if (isExpanded) {
-                            Column(
+                            Spacer(modifier = Modifier.height(PayStoryTokens.SpaceMd))
+                            Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                            Spacer(modifier = Modifier.height(PayStoryTokens.SpaceMd))
+
+                            Text(
+                                text = "Correct Category:",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Spacer(modifier = Modifier.height(PayStoryTokens.SpaceXs))
+
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(top = 8.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
                             ) {
-                                Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), modifier = Modifier.padding(bottom = 12.dp))
-
-                                // Category Selection
-                                Text(
-                                    text = "Correct Category Match",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                    modifier = Modifier.padding(bottom = 8.dp)
-                                )
-                                
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Category.values().filter { it != Category.UNCATEGORIZED }.forEach { cat ->
-                                        val isSelected = selectedReviewCategory == cat.name
-                                        FilterChip(
-                                            selected = isSelected,
-                                            onClick = { selectedReviewCategory = cat.name },
-                                            label = { Text("${cat.icon} ${cat.displayName}") }
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                // Description field
-                                OutlinedTextField(
-                                    value = reviewDescription,
-                                    onValueChange = { reviewDescription = it },
-                                    placeholder = { Text("What did you buy? e.g. Lunch with team, Uber...") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(12.dp),
-                                    singleLine = true
-                                )
-
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                // Action buttons inside expanded Edit screen
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    OutlinedButton(
-                                        onClick = { isExpanded = false },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Text("Cancel")
-                                    }
-
-                                    Button(
-                                        onClick = {
-                                            val desc = reviewDescription.ifBlank { "Uncategorized purchase" }
-                                            viewModel.reviewTransaction(pendingTx, selectedReviewCategory, desc)
-                                            isExpanded = false
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Text("Save Match")
-                                    }
+                                Category.values().filter { it != Category.UNCATEGORIZED }.forEach { cat ->
+                                    val isSelected = selectedReviewCategory == cat.name
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { selectedReviewCategory = cat.name },
+                                        label = { Text("${cat.icon} ${cat.displayName}") }
+                                    )
                                 }
                             }
-                        } else {
-                            // Quick One-Tap Action Buttons (Save, Edit, Skip)
-                            Row(
+
+                            Spacer(modifier = Modifier.height(PayStoryTokens.SpaceSm))
+
+                            OutlinedTextField(
+                                value = reviewDescription,
+                                onValueChange = { reviewDescription = it },
+                                placeholder = { Text("Add transaction story note...") },
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = { viewModel.skipTransaction(pendingTx) },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
-                                    )
-                                ) {
-                                    Text("Skip")
-                                }
-
-                                Button(
-                                    onClick = { isExpanded = true },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.secondary,
-                                        contentColor = MaterialTheme.colorScheme.onSecondary
-                                    )
-                                ) {
-                                    Text("Edit")
-                                }
-
-                                Button(
-                                    onClick = {
-                                        val desc = reviewDescription.ifBlank { "Uncategorized purchase" }
-                                        viewModel.reviewTransaction(pendingTx, selectedReviewCategory, desc)
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                ) {
-                                    Text("Save")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // QUICK STATS CARDS ROW
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Card(
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        "Total Recorded",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                    )
-                    Text(
-                        "$totalCount payments",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                }
-            }
-
-            Card(
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        "Pending reviews",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                    )
-                    Text(
-                        "${pendingReviews.size} to review",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = if (pendingReviews.isNotEmpty()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onBackground
-                        )
-                    )
-                }
-            }
-        }
-
-        // RECENT TRANSACTIONS HEADER
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "Recent Transactions",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-            )
-            TextButton(onClick = { viewModel.changeTab(MainTab.Transactions) }) {
-                Text("See All")
-                Icon(Icons.Default.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp))
-            }
-        }
-
-        // RECENT TRANSACTIONS LIST
-        if (transactions.isEmpty()) {
-            // Empty state placeholder
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("✍️", fontSize = 44.sp)
-                    Text(
-                        text = "No stories yet.",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                    )
-                    Text(
-                        text = "Your transactions will appear here once detected.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-        } else {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                transactions.take(5).forEach { tx ->
-                    TransactionListItem(tx = tx, onClick = {
-                        // Switches tab to transations & highlights details optionally!
-                        viewModel.changeTab(MainTab.Transactions)
-                    })
-                }
-            }
-        }
-
-        // BUDGET MINI-TRACK GROUP (Matches: section class="bg-[#1C1B1F] border border-[#49454F] rounded-2xl p-3 mb-2")
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        Text(
-            "Budget Trackers Status",
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onBackground
-        )
-
-        val topBudgetToShow = budgets.maxByOrNull { budget ->
-            val spent = viewModel.getCategoryBudgetSpent(budget.category, transactions)
-            if (budget.limitAmount > 0) (spent / budget.limitAmount) else 0.0
-        }
-        
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { viewModel.changeTab(MainTab.Budgets) },
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.background // #1C1B1F
-            ),
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp, 
-                MaterialTheme.colorScheme.outlineVariant // #49454F
-            )
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                if (topBudgetToShow != null) {
-                    val spent = viewModel.getCategoryBudgetSpent(topBudgetToShow.category, transactions)
-                    val percent = if (topBudgetToShow.limitAmount > 0) (spent / topBudgetToShow.limitAmount) else 0.0
-                    val percentFormatted = minOf(100, (percent * 100).toInt())
-                    val categoryDisplay = Category.values().firstOrNull { it.name == topBudgetToShow.category } ?: Category.UNCATEGORIZED
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("${categoryDisplay.icon} ", fontSize = 16.sp)
-                            Text(
-                                text = "${categoryDisplay.displayName} Budget",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onBackground
+                                shape = PayStoryTokens.RadiusMd,
+                                singleLine = true
                             )
                         }
+
+                        Spacer(modifier = Modifier.height(PayStoryTokens.SpaceMd))
+
+                        // Action Buttons Row: Skip, Edit, Save
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
+                        ) {
+                            OutlinedButton(
+                                onClick = { viewModel.skipTransaction(pendingTx) },
+                                modifier = Modifier.weight(1f),
+                                shape = PayStoryTokens.RadiusFull,
+                                border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline)
+                            ) {
+                                Text("Skip", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+
+                            OutlinedButton(
+                                onClick = { isExpanded = !isExpanded },
+                                modifier = Modifier.weight(1f),
+                                shape = PayStoryTokens.RadiusFull,
+                                border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline)
+                            ) {
+                                Text(if (isExpanded) "Close" else "Edit", color = MaterialTheme.colorScheme.onSurface)
+                            }
+
+                            Button(
+                                onClick = {
+                                    val desc = reviewDescription.ifBlank { "Auto-logged purchase" }
+                                    viewModel.reviewTransaction(pendingTx, selectedReviewCategory, desc)
+                                },
+                                modifier = Modifier.weight(1.2f),
+                                shape = PayStoryTokens.RadiusFull,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                )
+                            ) {
+                                Text("Save", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // RECENT TRANSACTIONS SECTION
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = PayStoryTokens.SpaceLg),
+            verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceMd)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Recent Transactions",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+
+                TextButton(
+                    onClick = { viewModel.changeTab(MainTab.Transactions) },
+                    contentPadding = PaddingValues(0.dp)
+                ) {
+                    Text(
+                        text = "See all >",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            if (transactions.isEmpty()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = PayStoryTokens.Radius2Xl,
+                    border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(PayStoryTokens.Space2Xl),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
+                    ) {
+                        Text("✍️", fontSize = 40.sp)
                         Text(
-                            text = "$percentFormatted% reached",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = if (percent >= 0.8) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                            text = "No stories logged yet",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Transactions arrive automatically via bank SMS and UPI push alerts.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
-                    
-                    // Linear Progress Bar
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)) {
+                    transactions.take(5).forEach { tx ->
+                        HomeTransactionRow(tx = tx, onClick = { viewModel.changeTab(MainTab.Transactions) })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeBudgetMiniCard(
+    categoryName: String,
+    dotColor: Color,
+    spentAmount: Double,
+    limitAmount: Double,
+    percentage: Int
+) {
+    Card(
+        modifier = Modifier
+            .width(180.dp)
+            .height(112.dp),
+        shape = PayStoryTokens.RadiusXl,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(PayStoryTokens.SpaceMd),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .background(
-                                color = MaterialTheme.colorScheme.outlineVariant, // #49454F
-                                shape = RoundedCornerShape(100.dp)
-                            )
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(minOf(1f, percent.toFloat()))
-                                .fillMaxHeight()
-                                .background(
-                                    color = if (percent >= 0.8) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                                    shape = RoundedCornerShape(100.dp)
-                                )
-                        )
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("📊 ", fontSize = 16.sp)
-                            Text(
-                                text = "Category Budget Status",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(dotColor)
+                    )
                     Text(
-                        text = "No category budgets set yet. Tap here to define maximum spend limits.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                        text = categoryName,
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 95.dp)
+                    )
+                }
+
+                Text(
+                    text = "$percentage%",
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    color = if (percentage > 100) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                )
+            }
+
+            Column {
+                Text(
+                    text = "₹${"%,.0f".format(spentAmount)} / ₹${"%,.0f".format(limitAmount)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(PayStoryTokens.SpaceXs))
+
+                // Progress Bar
+                val progress = (percentage / 100f).coerceIn(0f, 1f)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(PayStoryTokens.RadiusFull)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress)
+                            .fillMaxHeight()
+                            .clip(PayStoryTokens.RadiusFull)
+                            .background(
+                                if (percentage > 100) MaterialTheme.colorScheme.error
+                                else if (percentage >= 80) MaterialTheme.colorScheme.tertiary
+                                else MaterialTheme.colorScheme.primary
+                            )
                     )
                 }
             }
@@ -669,161 +710,77 @@ fun HomeScreen(viewModel: ExpenseViewModel) {
 }
 
 @Composable
-fun TransactionListItem(tx: Transaction, onClick: () -> Unit) {
-    val categoryDetails = Category.values().firstOrNull { it.name == tx.category } ?: Category.UNCATEGORIZED
-    val dateFormat = SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault())
-    val dateString = dateFormat.format(Date(tx.timestamp))
+private fun HomeTransactionRow(
+    tx: Transaction,
+    onClick: () -> Unit
+) {
+    val category = Category.values().firstOrNull { it.name == tx.category } ?: Category.UNCATEGORIZED
+    val dateFormat = SimpleDateFormat("d MMM, h:mm a", Locale.getDefault())
+    val formattedDate = dateFormat.format(Date(tx.timestamp))
 
-    // Badges category color associations from our Elegant Dark decorative tokens
-    val badgeBg = when (categoryDetails) {
-        Category.FOOD -> DecorativeOrange.copy(alpha = 0.15f)
-        Category.GROCERY -> DecorativeGold.copy(alpha = 0.15f)
-        Category.SHOPPING -> DecorativePink.copy(alpha = 0.15f)
-        Category.TRAVEL -> DecorativeBlue.copy(alpha = 0.15f)
-        Category.FUEL -> DecorativeBlue.copy(alpha = 0.15f)
-        Category.BILLS -> DecorativePurple.copy(alpha = 0.15f)
-        Category.RENT -> DecorativeRed.copy(alpha = 0.15f)
-        Category.EDUCATION -> DecorativeTeal.copy(alpha = 0.15f)
-        Category.HEALTH -> DecorativeCoral.copy(alpha = 0.15f)
-        Category.ENTERTAINMENT -> DecorativeIndigo.copy(alpha = 0.15f)
-        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-    }
-    
-    val badgeTextColor = when (categoryDetails) {
-        Category.FOOD -> DecorativeOrange
-        Category.GROCERY -> DecorativeGold
-        Category.SHOPPING -> DecorativePink
-        Category.TRAVEL -> DecorativeBlue
-        Category.FUEL -> DecorativeBlue
-        Category.BILLS -> DecorativePurple
-        Category.RENT -> DecorativeRed
-        Category.EDUCATION -> DecorativeTeal
-        Category.HEALTH -> DecorativeCoral
-        Category.ENTERTAINMENT -> DecorativeIndigo
-        else -> MaterialTheme.colorScheme.primary
-    }
-
-    // Container: #2B2930 (surface) with Rounded Corners
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
+        shape = PayStoryTokens.RadiusLg,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
     ) {
         Row(
             modifier = Modifier
-                .padding(12.dp)
+                .padding(PayStoryTokens.SpaceMd)
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceMd),
                 modifier = Modifier.weight(1f)
             ) {
-                // Category emoji badge
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = badgeBg,
-                    modifier = Modifier.size(44.dp)
+                // Category Icon
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(PayStoryTokens.RadiusMd)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(categoryDetails.icon, fontSize = 22.sp)
-                    }
+                    Text(text = category.icon, fontSize = 20.sp)
                 }
-
-                Spacer(modifier = Modifier.width(12.dp))
 
                 Column {
                     Text(
                         text = tx.merchantName,
-                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onBackground
+                        overflow = TextOverflow.Ellipsis
                     )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = categoryDetails.displayName,
-                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                            color = badgeTextColor
+                            text = "● ${category.displayName}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "•",
+                            text = "• $formattedDate",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f)
-                        )
-                        Text(
-                            text = dateString,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
-
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = if (tx.transactionType == "SENT") "-₹${"%,.0f".format(tx.amount)}" else "+₹${"%,.0f".format(tx.amount)}",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = if (tx.transactionType == "SENT") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                )
-                
-                // Show source type visually
-                val sourceBadgeText = if (tx.source == "sms") "Expense (SMS)" else "Income (Notification)"
-                val sourceBadgeBg = if (tx.source == "sms") MaterialTheme.colorScheme.error.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                val sourceBadgeColor = if (tx.source == "sms") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-
-                Box(
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .background(
-                            color = sourceBadgeBg,
-                            shape = RoundedCornerShape(4.dp)
-                        )
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = sourceBadgeText,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = sourceBadgeColor
-                    )
-                }
-
-                if (!tx.isReviewed) {
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 4.dp)
-                            .background(
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
-                                shape = RoundedCornerShape(4.dp)
-                            )
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "NEW Context Required",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
-                }
-            }
+            // Amount
+            Text(
+                text = if (tx.transactionType == "SENT") "-₹${"%,.2f".format(tx.amount)}" else "+₹${"%,.2f".format(tx.amount)}",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = if (tx.transactionType == "SENT") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

@@ -214,6 +214,33 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     val allTransactions: StateFlow<List<Transaction>> = repository.getAllTransactions()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Base & Total Account Balance Management
+    private val _manualBaseBalance = MutableStateFlow(sharedPrefs.getFloat("user_base_balance", 0f).toDouble())
+    val manualBaseBalance: StateFlow<Double> = _manualBaseBalance.asStateFlow()
+
+    private val _isBaseBalanceConfigured = MutableStateFlow(sharedPrefs.getBoolean("is_base_balance_configured", false))
+    val isBaseBalanceConfigured: StateFlow<Boolean> = _isBaseBalanceConfigured.asStateFlow()
+
+    val totalBalance: StateFlow<Double> = combine(allTransactions, _manualBaseBalance) { txList, base ->
+        val totalIncome = txList.filter { it.transactionType == "RECEIVED" }.sumOf { it.amount }
+        val totalExpense = txList.filter { it.transactionType == "SENT" }.sumOf { it.amount }
+        base + (totalIncome - totalExpense)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), _manualBaseBalance.value)
+
+    fun setTotalBalance(newTotal: Double) {
+        val txList = allTransactions.value
+        val totalIncome = txList.filter { it.transactionType == "RECEIVED" }.sumOf { it.amount }
+        val totalExpense = txList.filter { it.transactionType == "SENT" }.sumOf { it.amount }
+        val netTransactions = totalIncome - totalExpense
+        val base = newTotal - netTransactions
+        _manualBaseBalance.value = base
+        _isBaseBalanceConfigured.value = true
+        sharedPrefs.edit()
+            .putFloat("user_base_balance", base.toFloat())
+            .putBoolean("is_base_balance_configured", true)
+            .apply()
+    }
+
     val pendingReviewTransactions: StateFlow<List<Transaction>> = repository.getPendingReviewTransactions()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -397,7 +424,7 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
         }
 
         viewModelScope.launch {
-            val uId = currentUser.value?.userId ?: "demo_user_123"
+            val uId = currentUser.value?.userId ?: repository.getActiveUserId()
             val targetId = editingTransactionId ?: UUID.randomUUID().toString()
             
             val updatedTx = Transaction(
@@ -471,8 +498,9 @@ class ExpenseViewModel(application: Application) : AndroidViewModel(application)
     // SIMULATE TRANSACTION ARRIVAL (For UI & Demo testing purposes in the emulator!)
     fun simulateAutoTransactionArrival() {
         viewModelScope.launch {
+            val uId = currentUser.value?.userId ?: repository.getActiveUserId()
+            if (uId.isBlank()) return@launch
             val amount = (100..4500).random().toDouble()
-            val uId = currentUser.value?.userId ?: "demo_user_123"
             val timestamp = System.currentTimeMillis()
             
             // Alternate between Expense from SMS and Income from Notifications

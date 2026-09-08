@@ -1,28 +1,30 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -33,7 +35,9 @@ import androidx.compose.ui.window.Dialog
 import com.example.data.models.Budget
 import com.example.data.models.Category
 import com.example.ui.viewmodel.ExpenseViewModel
+import com.example.ui.theme.*
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -43,10 +47,17 @@ fun BudgetsScreen(viewModel: ExpenseViewModel) {
     val budgetLimits by viewModel.budgets.collectAsState()
     val allTx by viewModel.allTransactions.collectAsState()
     val alertHistory by viewModel.alerts.collectAsState()
+    val currentUser by viewModel.currentUser.collectAsState()
 
     val overallLimit by viewModel.overallBudgetLimit.collectAsState()
     val overallPeriod by viewModel.overallBudgetPeriod.collectAsState()
     val periodSpending = viewModel.getPeriodSpending(allTx, overallPeriod)
+
+    val totalBalance by viewModel.totalBalance.collectAsState()
+    val isBaseBalanceConfigured by viewModel.isBaseBalanceConfigured.collectAsState()
+
+    var showTotalBalanceDialog by remember { mutableStateOf(false) }
+    var inputTotalBalance by remember { mutableStateOf("") }
 
     var showBudgetForm by remember { mutableStateOf<Category?>(null) }
     var inputLimitAmount by remember { mutableStateOf("") }
@@ -55,400 +66,615 @@ fun BudgetsScreen(viewModel: ExpenseViewModel) {
     var inputOverallLimit by remember { mutableStateOf("") }
     var inputOverallPeriod by remember { mutableStateOf("") }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
-    ) {
-        // Headline titles
-        Text(
-            "Category Budgets",
-            style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.ExtraBold),
-            color = MaterialTheme.colorScheme.primary
-        )
+    val spentRatio = if (overallLimit > 0) (periodSpending / overallLimit).toFloat() else 0f
+    val spentPercent = (spentRatio * 100).toInt()
+    val remainingBudget = maxOf(0.0, overallLimit - periodSpending)
 
-        Text(
-            "Determine maximum limits for major categories to maintain strict spending control. We notify you automatically.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
-        )
+    val daysLeftInMonth = remember {
+        val cal = Calendar.getInstance()
+        val maxD = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+        val curD = cal.get(Calendar.DAY_OF_MONTH)
+        maxOf(0, maxD - curD)
+    }
+    val currentMonthLabel = remember { SimpleDateFormat("MMM", Locale.getDefault()).format(Date()) }
 
-        // OVERALL BUDGET HEADLINE CARD
-        Card(
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background
+    ) { paddingValues ->
+        Column(
             modifier = Modifier
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
-            ),
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                .fillMaxSize()
+                .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = PayStoryTokens.Space2Xl),
+            verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceBase)
+        ) {
+            // TOP APP BAR
+            PayStoryTopAppBar(
+                userInitials = currentUser?.name?.take(2)?.uppercase()?.ifBlank { "PS" } ?: "PS"
             )
-        ) {
-            Column(modifier = Modifier.padding(18.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Overall Spend Budget",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "Based on your configured ${overallPeriod.lowercase()}ly frequency",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                        )
-                    }
-                    Button(
-                        onClick = {
-                            inputOverallLimit = overallLimit.toInt().toString()
-                            inputOverallPeriod = overallPeriod
-                            showOverallBudgetDialog = true
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.testTag("configure_overall_budget_button")
-                    ) {
-                        Text("Configure", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
-                    }
-                }
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                val spentRatio = if (overallLimit > 0) (periodSpending / overallLimit).toFloat() else 0f
-                val spentPercent = (spentRatio * 100).toInt()
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    Column {
-                        Text(
-                            text = "₹${"%,.0f".format(periodSpending)} spent of ₹${"%,.0f".format(overallLimit)}",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            text = "${maxOf(0.0, overallLimit - periodSpending).let { "%,.0f".format(it) }} Left",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                        )
-                    }
+            // TITLE & SUBTITLE ROW
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = PayStoryTokens.SpaceLg),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
                     Text(
-                        text = "$spentPercent% reached",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                        color = if (spentRatio >= 1f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                        text = "Budgets",
+                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "Monthly limits & category allocations",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Custom Linear Progress bar
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                            shape = RoundedCornerShape(100.dp)
-                        )
+                Button(
+                    onClick = {
+                        inputOverallLimit = overallLimit.toInt().toString()
+                        inputOverallPeriod = overallPeriod
+                        showOverallBudgetDialog = true
+                    },
+                    shape = PayStoryTokens.RadiusFull,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                    modifier = Modifier.testTag("configure_overall_budget_button")
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(minOf(1f, spentRatio))
-                            .fillMaxHeight()
-                            .background(
-                                color = if (spentRatio >= 1f) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                                shape = RoundedCornerShape(100.dp)
-                            )
-                    )
+                    Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(PayStoryTokens.SpaceXs))
+                    Text("Config", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold))
                 }
             }
-        }
 
-        // Set limits prompt
-        Text(
-            "Choose Category to Set Limit",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-        )
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Category.values().filter { it != Category.UNCATEGORIZED }.forEach { cat ->
-                val hasActiveLimit = budgetLimits.any { it.category == cat.name }
-                val backgroundColor = if (hasActiveLimit) {
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                }
-
-                Card(
-                    modifier = Modifier
-                        .clickable {
-                            val activeLimit = budgetLimits.firstOrNull { it.category == cat.name }
-                            inputLimitAmount = activeLimit?.limitAmount?.toString() ?: ""
-                            showBudgetForm = cat
-                        }
-                        .width(135.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = backgroundColor)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(cat.icon, fontSize = 28.sp)
-                        Text(
-                            cat.displayName,
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.ExtraBold),
-                            textAlign = TextAlign.Center,
-                            maxLines = 1
-                        )
-                        if (hasActiveLimit) {
-                            val limit = budgetLimits.first { it.category == cat.name }.limitAmount
-                            Text("Limit: ₹${limit.toInt()}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                        } else {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(10.dp))
-                                Text("Set Limit", style = MaterialTheme.typography.labelSmall)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // LIST ACTIVE BUDGET PROGRESS BARS
-        Text(
-            "Budget Trackers Status",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-        )
-
-        if (budgetLimits.isEmpty()) {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth()
+            // TOTAL BALANCE CARD
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = PayStoryTokens.SpaceLg)
+                    .testTag("budgets_total_balance_card"),
+                shape = PayStoryTokens.Radius2Xl,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
             ) {
                 Column(
-                    modifier = Modifier.padding(28.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.padding(PayStoryTokens.SpaceLg),
+                    verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceMd)
                 ) {
-                    Text("💡", fontSize = 36.sp)
-                    Text("No Budgets Defined Yet", style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold))
-                    Text(
-                        "Create your first budget and start managing your spending story.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-        } else {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                budgetLimits.forEach { budget ->
-                    val catObj = Category.values().firstOrNull { it.name == budget.category } ?: Category.OTHERS
-                    val currentSpent = viewModel.getCategoryBudgetSpent(budget.category, allTx)
-                    val remaining = budget.limitAmount - currentSpent
-                    val progressRatio = if (budget.limitAmount > 0) (currentSpent / budget.limitAmount).toFloat() else 0f
-                    val progressPercent = (progressRatio * 100).toInt()
-
-                    // Assign indicator color based on severity (90%-100% Red/Error, 80%+ Gold/Warning, normal primary)
-                    val progressColor = when {
-                        progressPercent >= 100 -> MaterialTheme.colorScheme.error
-                        progressPercent >= 80 -> MaterialTheme.colorScheme.tertiary
-                        else -> MaterialTheme.colorScheme.primary
-                    }
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth().testTag("budget_category_card_${budget.category}"),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.padding(18.dp)) {
-                            // Header: Title and controls
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(catObj.icon, fontSize = 26.sp)
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(catObj.displayName, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                                }
-
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    IconButton(onClick = {
-                                        inputLimitAmount = budget.limitAmount.toString()
-                                        showBudgetForm = catObj
-                                    }) {
-                                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                                    }
-                                    IconButton(onClick = {
-                                        viewModel.removeBudgetLimit(budget.category)
-                                    }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            // Figures: Spent / Limit
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.Bottom
-                            ) {
-                                Column {
-                                    Text("Spent Amount", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f))
-                                    Text("₹${"%,.0f".format(currentSpent)} / ₹${"%,.0f".format(budget.limitAmount)}", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold))
-                                }
-
-                                Text("$progressPercent% used", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Black), color = progressColor)
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Progress Bar Indicator
-                            LinearProgressIndicator(
-                                progress = { progressRatio.coerceAtMost(1f) },
-                                modifier = Modifier.fillMaxWidth().height(10.dp),
-                                color = progressColor,
-                                strokeCap = StrokeCap.Round,
-                                trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
+                        ) {
+                            Text(
+                                text = "TOTAL BALANCE",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Remaining
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = if (remaining >= 0) "Remaining: ₹${"%,.0f".format(remaining)}" else "Overspent by: ₹${"%,.0f".format(-remaining)}",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                                    color = if (remaining >= 0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error
+                            if (isBaseBalanceConfigured) {
+                                PayStoryPill(
+                                    text = "Active",
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                    contentColor = MaterialTheme.colorScheme.primary,
+                                    dotColor = MaterialTheme.colorScheme.primary
                                 )
+                            }
+                        }
+
+                        // Add or Edit Total Balance Action Button
+                        FilledTonalButton(
+                            onClick = {
+                                inputTotalBalance = if (totalBalance != 0.0) totalBalance.toInt().toString() else ""
+                                showTotalBalanceDialog = true
+                            },
+                            shape = PayStoryTokens.RadiusFull,
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            ),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier
+                                .height(32.dp)
+                                .testTag("add_or_edit_total_balance_button")
+                        ) {
+                            Icon(
+                                imageVector = if (isBaseBalanceConfigured && totalBalance != 0.0) Icons.Default.Edit else Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(PayStoryTokens.SpaceXs))
+                            Text(
+                                text = if (isBaseBalanceConfigured && totalBalance != 0.0) "Edit Balance" else "Add Balance",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        Column {
+                            Text(
+                                text = "₹${"%,.2f".format(totalBalance)}",
+                                style = MaterialTheme.typography.headlineLarge.copy(
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = (-0.5).sp
+                                ),
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Text(
+                                text = if (isBaseBalanceConfigured) "Available liquid balance across accounts" else "Set your starting balance to track live funds",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            // MONTHLY SPEND LIMIT CARD
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = PayStoryTokens.SpaceLg),
+                shape = PayStoryTokens.Radius2Xl,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+            ) {
+                Column(
+                    modifier = Modifier.padding(PayStoryTokens.SpaceLg),
+                    verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceMd)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "MONTHLY SPEND LIMIT",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
+                        ) {
+                            PayStoryPill(
+                                text = "$spentPercent% USED",
+                                containerColor = if (spentRatio >= 1f) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = if (spentRatio >= 1f) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+
+                            IconButton(
+                                onClick = {
+                                    inputOverallLimit = overallLimit.toInt().toString()
+                                    inputOverallPeriod = overallPeriod
+                                    showOverallBudgetDialog = true
+                                },
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .testTag("edit_monthly_spend_limit_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit Spend Limit",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        Column {
+                            Text(
+                                text = "₹${"%,.2f".format(periodSpending)}",
+                                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black),
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Text(
+                                text = "of ₹${"%,.2f".format(overallLimit)} limit",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // Progress Bar
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(PayStoryTokens.RadiusFull)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(minOf(1f, spentRatio))
+                                .fillMaxHeight()
+                                .clip(PayStoryTokens.RadiusFull)
+                                .background(
+                                    if (spentRatio >= 1f) MaterialTheme.colorScheme.error
+                                    else if (spentRatio >= 0.8f) MaterialTheme.colorScheme.tertiary
+                                    else MaterialTheme.colorScheme.primary
+                                )
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary)
+                            )
+                            Text(
+                                text = "₹${"%,.2f".format(remainingBudget)} remaining",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Text(
+                            text = "$daysLeftInMonth days left in $currentMonthLabel",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // SET LIMIT FOR CATEGORIES SCROLL
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
+            ) {
+                Text(
+                    text = "Add Category Limit",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(horizontal = PayStoryTokens.SpaceLg)
+                )
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = PayStoryTokens.SpaceLg),
+                    horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
+                ) {
+                    Category.values().filter { it != Category.UNCATEGORIZED }.forEach { cat ->
+                        val hasActiveLimit = budgetLimits.any { it.category == cat.name }
+
+                        Card(
+                            modifier = Modifier
+                                .clickable {
+                                    val activeLimit = budgetLimits.firstOrNull { it.category == cat.name }
+                                    inputLimitAmount = activeLimit?.limitAmount?.toString() ?: ""
+                                    showBudgetForm = cat
+                                }
+                                .width(130.dp),
+                            shape = PayStoryTokens.RadiusXl,
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (hasActiveLimit) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                else MaterialTheme.colorScheme.surface
+                            ),
+                            border = BorderStroke(
+                                PayStoryTokens.BorderThin,
+                                if (hasActiveLimit) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(PayStoryTokens.SpaceMd),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(cat.icon, fontSize = 24.sp)
+                                Text(
+                                    text = cat.displayName,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (hasActiveLimit) {
+                                    val limit = budgetLimits.first { it.category == cat.name }.limitAmount
+                                    Text(
+                                        text = "₹${"%,.0f".format(limit)}",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                } else {
+                                    Text(
+                                        text = "+ Set Limit",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        // TRIGGER VALUE ALERTS SECTION
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "Triggered Budget Alerts",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-            )
-
-            if (alertHistory.isNotEmpty()) {
-                IconButton(
-                    onClick = { viewModel.clearAlerts() },
-                    modifier = Modifier.background(
-                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.1f),
-                        shape = CircleShape
-                    ).size(36.dp)
-                ) {
-                    Icon(Icons.Default.ClearAll, contentDescription = "Clear Alerts", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                }
-            }
-        }
-
-        if (alertHistory.isEmpty()) {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth()
+            // CATEGORY BUDGETS LIST
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = PayStoryTokens.SpaceLg),
+                verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceMd)
             ) {
                 Text(
-                    text = "No generated alerts yet. Notifications exceeding 80% or 100% of defined thresholds appear here as permanent record indicators.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
-                    modifier = Modifier.padding(24.dp),
-                    textAlign = TextAlign.Center
+                    text = "Category Budgets",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onBackground
                 )
-            }
-        } else {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                alertHistory.forEach { alert ->
-                    val dateFormat = SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault())
-                    val alertTime = dateFormat.format(Date(alert.timestamp))
 
-                    val containerColor = if (alert.percentageReached == 100) {
-                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
-                    } else {
-                        MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f)
-                    }
-
-                    val accentColor = if (alert.percentageReached == 100) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.tertiary
-                    }
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = containerColor)
+                if (budgetLimits.isEmpty()) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface,
+                        shape = PayStoryTokens.Radius2Xl,
+                        border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            modifier = Modifier.padding(PayStoryTokens.Space2Xl),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Warning,
-                                contentDescription = "Warning",
-                                tint = accentColor,
-                                modifier = Modifier.size(28.dp)
+                            Text("📊", fontSize = 36.sp)
+                            Text(
+                                text = "No category budgets defined",
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
                             )
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Column {
-                                Text(
-                                    text = alert.message,
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onBackground
+                            Text(
+                                text = "Tap any category above to set spend thresholds and receive warnings.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    budgetLimits.forEach { budget ->
+                        val catObj = Category.values().firstOrNull { it.name == budget.category } ?: Category.OTHERS
+                        val currentSpent = viewModel.getCategoryBudgetSpent(budget.category, allTx)
+                        val remaining = budget.limitAmount - currentSpent
+                        val progressRatio = if (budget.limitAmount > 0) (currentSpent / budget.limitAmount).toFloat() else 0f
+                        val progressPercent = (progressRatio * 100).toInt()
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("budget_category_card_${budget.category}"),
+                            shape = PayStoryTokens.Radius2Xl,
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(PayStoryTokens.SpaceLg),
+                                verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
+                            ) {
+                                // Header row
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceMd)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(PayStoryTokens.RadiusMd)
+                                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(catObj.icon, fontSize = 22.sp)
+                                        }
+
+                                        Column {
+                                            Text(
+                                                text = catObj.displayName,
+                                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "Auto-tracked from spends",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        PayStoryPill(
+                                            text = "$progressPercent%",
+                                            containerColor = if (progressPercent > 100) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer,
+                                            contentColor = if (progressPercent > 100) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+
+                                        IconButton(
+                                            onClick = {
+                                                inputLimitAmount = budget.limitAmount.toString()
+                                                showBudgetForm = catObj
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Edit,
+                                                contentDescription = "Edit",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = { viewModel.removeBudgetLimit(budget.category) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Delete",
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(PayStoryTokens.SpaceXs))
+
+                                // Figures
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.Bottom
+                                ) {
+                                    Text(
+                                        text = "₹${"%,.0f".format(currentSpent)} / ₹${"%,.0f".format(budget.limitAmount)}",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+
+                                    Text(
+                                        text = if (remaining >= 0) "₹${"%,.0f".format(remaining)} left" else "! Exceeded by ₹${"%,.0f".format(-remaining)}",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = if (remaining >= 0) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
+                                    )
+                                }
+
+                                // Linear Progress bar
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(PayStoryTokens.RadiusFull)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth(minOf(1f, progressRatio))
+                                            .fillMaxHeight()
+                                            .clip(PayStoryTokens.RadiusFull)
+                                            .background(
+                                                if (progressPercent >= 100) MaterialTheme.colorScheme.error
+                                                else if (progressPercent >= 80) MaterialTheme.colorScheme.tertiary
+                                                else MaterialTheme.colorScheme.primary
+                                            )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // TRIGGERED BUDGET ALERTS SECTION
+            if (alertHistory.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = PayStoryTokens.SpaceLg),
+                    verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Triggered Alerts",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+
+                        TextButton(
+                            onClick = { viewModel.clearAlerts() },
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text(
+                                text = "Clear All",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+
+                    alertHistory.forEach { alert ->
+                        val dateFormat = SimpleDateFormat("MMM dd, yyyy • hh:mm a", Locale.getDefault())
+                        val alertTime = dateFormat.format(Date(alert.timestamp))
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = PayStoryTokens.RadiusLg,
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.error.copy(alpha = 0.4f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(PayStoryTokens.SpaceMd),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceMd)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = "Warning",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(24.dp)
                                 )
-                                Text(
-                                    text = alertTime,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
-                                )
+                                Column {
+                                    Text(
+                                        text = alert.message,
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = alertTime,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
                     }
@@ -461,41 +687,45 @@ fun BudgetsScreen(viewModel: ExpenseViewModel) {
     showBudgetForm?.let { cat ->
         Dialog(onDismissRequest = { showBudgetForm = null }) {
             Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                shape = PayStoryTokens.Radius2Xl,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
             ) {
                 Column(
-                    modifier = Modifier.padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    modifier = Modifier.padding(PayStoryTokens.SpaceXl),
+                    verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceBase),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(cat.icon, fontSize = 48.sp)
+                    Text(cat.icon, fontSize = 44.sp)
                     Text(
                         text = "Set Limit for ${cat.displayName}",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black)
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
                     )
 
                     OutlinedTextField(
                         value = inputLimitAmount,
                         onValueChange = { inputLimitAmount = it },
                         label = { Text("Limit Amount (₹)") },
-                        placeholder = { Text("e.g. 5000") },
+                        placeholder = { Text("e.g. 15000") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth().testTag("budget_limit_input_field"),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("budget_limit_input_field"),
                         singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
+                        shape = PayStoryTokens.RadiusMd
                     )
 
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
                     ) {
                         OutlinedButton(
                             onClick = { showBudgetForm = null },
-                            modifier = Modifier.weight(1.5f),
-                            shape = RoundedCornerShape(12.dp)
+                            modifier = Modifier.weight(1f),
+                            shape = PayStoryTokens.RadiusFull
                         ) {
-                            Text("Discard")
+                            Text("Cancel")
                         }
 
                         Button(
@@ -506,10 +736,11 @@ fun BudgetsScreen(viewModel: ExpenseViewModel) {
                                     showBudgetForm = null
                                 }
                             },
-                            modifier = Modifier.weight(2f),
-                            shape = RoundedCornerShape(12.dp)
+                            modifier = Modifier.weight(1f),
+                            shape = PayStoryTokens.RadiusFull,
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                         ) {
-                            Text("Save Limit")
+                            Text("Save Limit", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -517,23 +748,21 @@ fun BudgetsScreen(viewModel: ExpenseViewModel) {
         }
     }
 
+    // OVERALL BUDGET CONFIG DIALOG
     if (showOverallBudgetDialog) {
         Dialog(onDismissRequest = { showOverallBudgetDialog = false }) {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
+            Card(
+                shape = PayStoryTokens.Radius2Xl,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
             ) {
                 Column(
-                    modifier = Modifier.padding(24.dp),
+                    modifier = Modifier.padding(PayStoryTokens.SpaceXl),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceBase)
                 ) {
                     Text(
-                        text = "Configure Overall Budget",
+                        text = "Configure Monthly Budget",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -544,86 +773,139 @@ fun BudgetsScreen(viewModel: ExpenseViewModel) {
                         label = { Text("Budget Limit (₹)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("overall_limit_input")
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("overall_limit_input"),
+                        shape = PayStoryTokens.RadiusMd
                     )
 
-                    // Period Selection: Month vs Week Segmented Control
                     Column(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceXs)
                     ) {
                         Text(
                             text = "Budget Period Frequency",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
                         ) {
                             listOf("MONTH", "WEEK").forEach { period ->
                                 val isSelected = inputOverallPeriod == period
-                                Card(
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { inputOverallPeriod = period },
+                                    label = { Text(if (period == "WEEK") "Weekly" else "Monthly") },
                                     modifier = Modifier
                                         .weight(1f)
-                                        .clickable { inputOverallPeriod = period }
                                         .testTag("budget_period_card_$period"),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (isSelected) {
-                                            MaterialTheme.colorScheme.primaryContainer
-                                        } else {
-                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                        }
-                                    ),
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        1.dp,
-                                        if (isSelected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent
-                                    )
-                                ) {
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
-                                    ) {
-                                        Text(
-                                            text = if (period == "WEEK") "Weekly" else "Monthly",
-                                            style = MaterialTheme.typography.labelLarge.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                            )
-                                        )
-                                    }
-                                }
+                                    shape = PayStoryTokens.RadiusFull
+                                )
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
                     ) {
                         OutlinedButton(
                             onClick = { showOverallBudgetDialog = false },
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = PayStoryTokens.RadiusFull
                         ) {
                             Text("Cancel")
                         }
 
                         Button(
                             onClick = {
-                                val limitVal = inputOverallLimit.toDoubleOrNull() ?: 50000.0
+                                val limitVal = inputOverallLimit.toDoubleOrNull() ?: 65000.0
                                 viewModel.updateOverallBudget(limitVal, inputOverallPeriod)
                                 showOverallBudgetDialog = false
                             },
                             modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = PayStoryTokens.RadiusFull,
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                         ) {
-                            Text("Save")
+                            Text("Save", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // TOTAL BALANCE CONFIG DIALOG
+    if (showTotalBalanceDialog) {
+        Dialog(onDismissRequest = { showTotalBalanceDialog = false }) {
+            Card(
+                shape = PayStoryTokens.Radius2Xl,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("total_balance_dialog")
+            ) {
+                Column(
+                    modifier = Modifier.padding(PayStoryTokens.SpaceXl),
+                    verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceBase)
+                ) {
+                    Text(
+                        text = if (isBaseBalanceConfigured && totalBalance != 0.0) "Edit Total Balance" else "Add Total Balance",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    Text(
+                        text = "Enter your current available balance across bank accounts and UPI wallets to establish your real-time ledger.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = inputTotalBalance,
+                        onValueChange = { inputTotalBalance = it.filter { ch -> ch.isDigit() || ch == '.' } },
+                        label = { Text("Total Balance (₹)") },
+                        placeholder = { Text("e.g. 50000") },
+                        prefix = { Text("₹ ", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("total_balance_input"),
+                        shape = PayStoryTokens.RadiusMd
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
+                    ) {
+                        OutlinedButton(
+                            onClick = { showTotalBalanceDialog = false },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("cancel_total_balance_button"),
+                            shape = PayStoryTokens.RadiusFull
+                        ) {
+                            Text("Cancel")
+                        }
+
+                        Button(
+                            onClick = {
+                                val newBal = inputTotalBalance.toDoubleOrNull() ?: 0.0
+                                viewModel.setTotalBalance(newBal)
+                                showTotalBalanceDialog = false
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("save_total_balance_button"),
+                            shape = PayStoryTokens.RadiusFull,
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Text("Save", fontWeight = FontWeight.Bold)
                         }
                     }
                 }

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,20 +15,27 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,18 +57,18 @@ fun isNotificationServiceEnabled(context: Context): Boolean {
     return false
 }
 
-data class OnboardingPage(
+data class OnboardingStep(
+    val stepNumber: Int,
+    val badge: String,
     val title: String,
-    val description: String,
-    val emoji: String,
-    val featureTitle: String,
-    val featureDesc: String
+    val description: String
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnboardingScreen(viewModel: ExpenseViewModel) {
     val context = LocalContext.current
+    val overallLimit by viewModel.overallBudgetLimit.collectAsState()
     var isPermissionGranted by remember { mutableStateOf(isNotificationServiceEnabled(context)) }
 
     // Periodic state polling while user returns from Settings page
@@ -74,101 +82,131 @@ fun OnboardingScreen(viewModel: ExpenseViewModel) {
         }
     }
 
-    val pages = remember {
+    val steps = remember {
         listOf(
-            OnboardingPage(
-                title = "Never Forget Why You Spent Money",
-                description = "PayStory helps you remember the reason behind every payment and transfer.",
-                emoji = "🧠",
-                featureTitle = "Personal Context",
-                featureDesc = "Understanding the story behind each charge is the secret to smarter spending habits."
+            OnboardingStep(
+                stepNumber = 1,
+                badge = "Create Your Space",
+                title = "Welcome to PayStory",
+                description = "Start your automated story ledger with clean, private financial tracking."
             ),
-            OnboardingPage(
-                title = "Capture Transactions Automatically",
-                description = "Track expenses through bank transaction messages and income through payment notifications.",
-                emoji = "📲",
-                featureTitle = "Auto-Detection Engine",
-                featureDesc = "We scan incoming transactional alerts completely offline to make logging effortless."
+            OnboardingStep(
+                stepNumber = 2,
+                badge = "Auto-Detection Engine",
+                title = "Capture Spends Instantly",
+                description = "We scan incoming transactional alerts completely offline to make logging effortless."
             ),
-            OnboardingPage(
-                title = "Know Where Your Money Goes",
-                description = "Set budgets, organize transactions, and understand your spending habits.",
-                emoji = "📊",
-                featureTitle = "Smart Visual Insights",
-                featureDesc = "Group by category and configure budgets so your story is always clear."
-            ),
-            OnboardingPage(
+            OnboardingStep(
+                stepNumber = 3,
+                badge = "Category Budgets",
                 title = "Every Payment Has a Story",
-                description = "Add notes and categories to every transaction so future you always remembers why it happened.",
-                emoji = "✍️",
-                featureTitle = "Ready for Launch",
-                featureDesc = "Securely grant permissions locally to begin your financial story."
+                description = "Add notes and categories to every transaction so future you always remembers why it happened."
             )
         )
     }
 
-    var currentPageIndex by remember { mutableStateOf(0) }
-    val page = pages[currentPageIndex]
+    var currentStepIndex by remember { mutableStateOf(0) }
+    val currentStep = steps[currentStepIndex]
+    var passwordVisible by remember { mutableStateOf(false) }
 
-    Scaffold { innerPadding ->
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.background,
-                            MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp)
-                        )
-                    )
-                )
                 .padding(innerPadding)
-                .padding(24.dp),
+                .padding(PayStoryTokens.SpaceLg),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Header Progress / Skip
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (currentPageIndex > 0) {
-                    IconButton(onClick = { currentPageIndex-- }) {
-                        Icon(
-                            imageVector = Icons.Default.ChevronLeft,
-                            contentDescription = "Back",
-                            tint = MaterialTheme.colorScheme.primary
+            // Header Top Bar: Logo, Step Indicator & Skip CTA
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(PayStoryTokens.RadiusMd)
+                                .background(MaterialTheme.colorScheme.primary),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("✍️", fontSize = 16.sp)
+                        }
+                        Text(
+                            text = "PayStory",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                     }
-                } else {
-                    Spacer(modifier = Modifier.width(48.dp))
+
+                    if (currentStepIndex < steps.size - 1) {
+                        TextButton(
+                            onClick = { viewModel.completeOnboarding() },
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+                        ) {
+                            Text(
+                                text = "Skip",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                            )
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.width(48.dp))
+                    }
                 }
 
-                Text(
-                    text = "${currentPageIndex + 1} of ${pages.size}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                )
+                Spacer(modifier = Modifier.height(PayStoryTokens.SpaceMd))
 
-                if (currentPageIndex < pages.size - 1) {
-                    TextButton(onClick = { currentPageIndex = pages.size - 1 }) {
-                        Text(
-                            text = "Skip",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary
+                // Progress Step Indicators (Segmented Bar)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    steps.forEachIndexed { index, _ ->
+                        val isActive = index <= currentStepIndex
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(4.dp)
+                                .clip(PayStoryTokens.RadiusFull)
+                                .background(
+                                    if (isActive) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.surfaceVariant
+                                )
                         )
                     }
-                } else {
-                    Spacer(modifier = Modifier.width(48.dp))
+                }
+
+                Spacer(modifier = Modifier.height(PayStoryTokens.SpaceSm))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "STEP ${currentStepIndex + 1} OF ${steps.size}",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
-            // Animated Center Column
+            // Animated Center Content
             AnimatedContent(
-                targetState = currentPageIndex,
+                targetState = currentStepIndex,
                 transitionSpec = {
                     if (targetState > initialState) {
                         (slideInHorizontally { width -> width } + fadeIn()) togetherWith
@@ -181,172 +219,342 @@ fun OnboardingScreen(viewModel: ExpenseViewModel) {
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                label = "OnboardingPageTransition"
+                label = "OnboardingStepTransition"
             ) { targetIndex ->
-                val currentPage = pages[targetIndex]
+                val step = steps[targetIndex]
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                    horizontalAlignment = Alignment.Start,
+                    verticalArrangement = Arrangement.Top
                 ) {
-                    // Big decorative Emoji/Icon wrapper
-                    Box(
-                        modifier = Modifier
-                            .size(130.dp)
-                            .background(
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                                shape = RoundedCornerShape(32.dp)
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = currentPage.emoji,
-                            fontSize = 62.sp,
-                            lineHeight = 62.sp
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(PayStoryTokens.SpaceLg))
 
-                    Spacer(modifier = Modifier.height(32.dp))
-
-                    Text(
-                        text = currentPage.title,
-                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
-                        color = MaterialTheme.colorScheme.primary,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 8.dp)
+                    // Green Pill Badge
+                    PayStoryPill(
+                        text = step.badge,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        dotColor = MaterialTheme.colorScheme.primary
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(PayStoryTokens.SpaceMd))
 
+                    // Heading & Subtitle
                     Text(
-                        text = currentPage.description,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 16.dp)
+                        text = step.title,
+                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onBackground
                     )
 
-                    Spacer(modifier = Modifier.height(28.dp))
+                    Spacer(modifier = Modifier.height(PayStoryTokens.SpaceSm))
 
-                    // Secondary Highlight Box
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                        )
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = currentPage.featureTitle,
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.secondary
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = currentPage.featureDesc,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
+                    Text(
+                        text = step.description,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
-                    // For the last slide, render the system permission helpers
-                    if (targetIndex == pages.size - 1) {
-                        Spacer(modifier = Modifier.height(24.dp))
-                        
-                        Text(
-                            text = "To enable automatic transaction detection offline, please authorize notification list access below:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
+                    Spacer(modifier = Modifier.height(PayStoryTokens.SpaceXl))
 
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        if (isPermissionGranted) {
-                            Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp)
+                    // Step 1 Body: Profile Details Form
+                    if (targetIndex == 0) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = PayStoryTokens.Radius2Xl,
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(PayStoryTokens.SpaceLg),
+                                verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceBase)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = "Granted",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Listener Access Authorized!",
-                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                // Full Name
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Full Name",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "As on bank account",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(PayStoryTokens.SpaceXs))
+                                    OutlinedTextField(
+                                        value = viewModel.authName.value,
+                                        onValueChange = { viewModel.authName.value = it },
+                                        placeholder = { Text("Enter your name") },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Person,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = PayStoryTokens.RadiusMd,
+                                        singleLine = true,
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                                        )
                                     )
                                 }
+
+                                // Email
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        text = "Email Address",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(PayStoryTokens.SpaceXs))
+                                    OutlinedTextField(
+                                        value = viewModel.authEmail.value,
+                                        onValueChange = { viewModel.authEmail.value = it },
+                                        placeholder = { Text("Enter your email") },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Email,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = PayStoryTokens.RadiusMd,
+                                        singleLine = true,
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                                        )
+                                    )
+                                }
+
+                                // Password
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Security PIN / Password",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "Strong",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(PayStoryTokens.SpaceXs))
+                                    OutlinedTextField(
+                                        value = viewModel.authPassword.value,
+                                        onValueChange = { viewModel.authPassword.value = it },
+                                        placeholder = { Text("Enter security PIN or password") },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Lock,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        },
+                                        trailingIcon = {
+                                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                                Icon(
+                                                    imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = PayStoryTokens.RadiusMd,
+                                        singleLine = true,
+                                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                            unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                                        )
+                                    )
+                                }
+
+                                // Currency Preview Card
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = PayStoryTokens.RadiusLg,
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(PayStoryTokens.SpaceMd),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceMd)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("₹", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                        }
+                                        Column {
+                                            Text(
+                                                text = "Default Currency: Indian Rupee (₹)",
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "Formatted with high-contrast tabular figures.",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                        } else {
-                            Button(
-                                onClick = {
-                                    val intent = Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
-                                    context.startActivity(intent)
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(48.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
-                                shape = RoundedCornerShape(12.dp)
+                        }
+                    } else if (targetIndex == 1) {
+                        // Step 2 Body: Notification & SMS Permission Setup
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = PayStoryTokens.Radius2Xl,
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(PayStoryTokens.SpaceLg),
+                                verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceBase)
                             ) {
-                                Icon(Icons.Default.NotificationsActive, contentDescription = null)
-                                Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Authorize Notification Access",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                    text = "Automated Transaction Tracking",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
+                                Text(
+                                    text = "PayStory reads incoming bank SMS and UPI payment notifications entirely on your device. Zero cloud uploads, zero privacy compromises.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                if (isPermissionGranted) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = PayStoryTokens.RadiusMd,
+                                        border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(PayStoryTokens.SpaceMd),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceSm)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.CheckCircle,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = "Notification Listener Active",
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = {
+                                            val intent = Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")
+                                            context.startActivity(intent)
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(48.dp),
+                                        shape = PayStoryTokens.RadiusFull,
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.tertiary,
+                                            contentColor = MaterialTheme.colorScheme.onTertiary
+                                        )
+                                    ) {
+                                        Icon(Icons.Default.NotificationsActive, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(PayStoryTokens.SpaceSm))
+                                        Text("Authorize Notification Access", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // Step 3 Body: Ready to launch
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = PayStoryTokens.Radius2Xl,
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(PayStoryTokens.BorderThin, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(PayStoryTokens.SpaceLg),
+                                verticalArrangement = Arrangement.spacedBy(PayStoryTokens.SpaceBase)
+                            ) {
+                                Text(
+                                    text = "Ready to Begin",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Your personalized expense story is prepared. Track dining, travel, shopping, and bills with smart auto-categorization and budget alerts.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = PayStoryTokens.RadiusMd,
+                                    color = MaterialTheme.colorScheme.surfaceVariant
+                                ) {
+                                    Column(modifier = Modifier.padding(PayStoryTokens.SpaceMd)) {
+                                        Text(
+                                            text = "🎯 Monthly Budget Cap: ₹${"%,.0f".format(overallLimit)}",
+                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "You can adjust category thresholds at any time in the Budgets tab.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Bottom Navigation Dots / CTA
+            // Bottom CTA Button
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Indicator dots
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    pages.forEachIndexed { idx, _ ->
-                        val isSelected = idx == currentPageIndex
-                        val widthAnim by animateFloatAsState(targetValue = if (isSelected) 24f else 8f, label = "dotWidth")
-                        Box(
-                            modifier = Modifier
-                                .width(widthAnim.dp)
-                                .height(8.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
-                                )
-                        )
-                    }
-                }
-
-                // CTA button
                 Button(
                     onClick = {
-                        if (currentPageIndex < pages.size - 1) {
-                            currentPageIndex++
+                        if (currentStepIndex < steps.size - 1) {
+                            currentStepIndex++
                         } else {
                             viewModel.completeOnboarding()
                         }
@@ -354,11 +562,14 @@ fun OnboardingScreen(viewModel: ExpenseViewModel) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp),
-                    enabled = currentPageIndex < pages.size - 1 || isPermissionGranted,
-                    shape = RoundedCornerShape(14.dp)
+                    shape = PayStoryTokens.RadiusFull,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
                 ) {
                     Text(
-                        text = if (currentPageIndex < pages.size - 1) "Next" else "Get Started",
+                        text = if (currentStepIndex < steps.size - 1) "Continue to Next Step →" else "Continue to Dashboard →",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                 }

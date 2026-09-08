@@ -89,24 +89,9 @@ class TransactionNotificationListener : NotificationListenerService() {
 
     private fun parseAndSaveTransaction(pkgName: String, title: String, combinedText: String) {
         try {
-            val lowercaseText = combinedText.lowercase()
-
-            // Detect incoming money transactions (Income)
-            val receivedKeywords = listOf(
-                "received", "credited", "added", "refunded", "incoming", 
-                "cashback", "deposited", "got", "paid to you", "received from"
-            )
-            
-            var isReceived = false
-            for (keyword in receivedKeywords) {
-                if (lowercaseText.contains(keyword)) {
-                    isReceived = true
-                    break
-                }
-            }
-
-            if (!isReceived) {
-                Log.d("NotificationListener", "[LOG] Notification parsed: Not an incoming payment keyword index match. Ignoring.")
+            // Check promo exclusion and genuine payment notification criteria:
+            if (!TransactionFilter.isLikelyRealNotification(pkgName, title, combinedText)) {
+                Log.d("NotificationListener", "[LOG] Notification parsed: Not a genuine payment notification (failed promo check or package check). Ignoring.")
                 return
             }
 
@@ -125,7 +110,11 @@ class TransactionNotificationListener : NotificationListenerService() {
             val app = applicationContext as? ExpenseApplication ?: return
             val repo = app.repository
             
-            val activeUserId = repo.currentUser.value?.userId ?: "demo_user_123"
+            val activeUserId = repo.getActiveUserId()
+            if (activeUserId.isBlank()) {
+                Log.d("NotificationListener", "[LOG] No active logged in user found. Skipping notification.")
+                return
+            }
             val timestamp = System.currentTimeMillis()
 
             serviceScope.launch {

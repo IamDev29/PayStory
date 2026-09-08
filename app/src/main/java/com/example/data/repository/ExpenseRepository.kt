@@ -12,11 +12,14 @@ import com.example.data.models.User
 import com.example.data.models.MerchantMapping
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -102,19 +105,7 @@ class ExpenseRepository(
                 val storedUserId = sharedPrefs.getString("userId_storage_$lowercaseEmail", null)
 
                 if (registeredPw == null || storedUserId == null) {
-                    // Prepopulate if empty for demo/testing convenience!
-                    val demoUserId = "demo_user_123"
-                    val demoUser = User(userId = demoUserId, name = "Ankit Kumar", email = email, isOnboarded = _isOnboarded.value)
-                    dao.insertUser(demoUser)
-                    sharedPrefs.edit()
-                        .putString("logged_in_user_id", demoUserId)
-                        .putString("user_name", "Ankit Kumar")
-                        .putString("user_email", email)
-                        .putString("password_storage_$lowercaseEmail", password)
-                        .putString("userId_storage_$lowercaseEmail", demoUserId)
-                        .apply()
-                    _currentUser.value = demoUser
-                    launch(Dispatchers.Main) { onSuccess() }
+                    launch(Dispatchers.Main) { onError("Account not found. Please sign up first.") }
                     return@launch
                 }
 
@@ -138,6 +129,12 @@ class ExpenseRepository(
                 launch(Dispatchers.Main) { onError(e.message ?: "Authentication failed") }
             }
         }
+    }
+
+    fun getActiveUserId(): String {
+        return _currentUser.value?.userId
+            ?: sharedPrefs.getString("logged_in_user_id", null)
+            ?: ""
     }
 
     fun forgotPassword(email: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
@@ -174,14 +171,28 @@ class ExpenseRepository(
     }
 
     // TRANSACTION APIs
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun getAllTransactions(): Flow<List<Transaction>> {
-        val uId = _currentUser.value?.userId ?: "demo_user_123"
-        return dao.getAllTransactions(uId)
+        return _currentUser.flatMapLatest { user ->
+            val uId = user?.userId ?: getActiveUserId()
+            if (uId.isNotBlank()) {
+                dao.getAllTransactions(uId)
+            } else {
+                flowOf(emptyList())
+            }
+        }
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun getPendingReviewTransactions(): Flow<List<Transaction>> {
-        val uId = _currentUser.value?.userId ?: "demo_user_123"
-        return dao.getTransactionsByReview(uId, false)
+        return _currentUser.flatMapLatest { user ->
+            val uId = user?.userId ?: getActiveUserId()
+            if (uId.isNotBlank()) {
+                dao.getTransactionsByReview(uId, false)
+            } else {
+                flowOf(emptyList())
+            }
+        }
     }
 
     fun getTransactionById(transactionId: String): Flow<Transaction?> {
@@ -208,7 +219,7 @@ class ExpenseRepository(
     }
 
     suspend fun createManualTransaction(amount: Double, merchant: String, type: String, category: String, description: String) {
-        val uId = _currentUser.value?.userId ?: "demo_user_123"
+        val uId = getActiveUserId()
         val tx = Transaction(
             transactionId = UUID.randomUUID().toString(),
             amount = amount,
@@ -245,7 +256,8 @@ class ExpenseRepository(
     // INTERNAL BUDGET CRITICAL CHECKING
     private suspend fun checkBudgetsForCategory(categoryName: String) {
         val budget = dao.getBudgetSync(categoryName) ?: return
-        val uId = _currentUser.value?.userId ?: "demo_user_123"
+        val uId = getActiveUserId()
+        if (uId.isBlank()) return
         val allTx = dao.getTransactionsSync(uId)
 
         // Sum current spent for this category (Only count "SENT" transactions of this category)

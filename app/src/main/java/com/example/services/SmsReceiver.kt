@@ -50,17 +50,11 @@ class SmsReceiver : BroadcastReceiver() {
     }
 
     private fun parseAndSaveSmsTransaction(context: Context, sender: String, text: String) {
-        val lowercaseText = text.lowercase()
-        val isExpense = lowercaseText.contains("debited") ||
-                lowercaseText.contains("spent") ||
-                lowercaseText.contains("transferred") ||
-                lowercaseText.contains("successful for") ||
-                lowercaseText.contains("paid") ||
-                lowercaseText.contains("sent") ||
-                lowercaseText.contains("withdrawn")
-
-        if (!isExpense) {
-            Log.d("SmsReceiver", "[LOG] SMS parsed: SMS content is not an expense. Ignoring.")
+        // Run robust transaction filter:
+        // 1. Rejects promotional messages (precedence over verbs)
+        // 2. Requires amount, transaction verb, and structural signal (A/c, Ref/UTR, Avl Bal)
+        if (!TransactionFilter.isLikelyRealSmsTransaction(text)) {
+            Log.d("SmsReceiver", "[LOG] SMS parsed: Not a genuine transaction (failed promo exclusion or structural check). Ignoring.")
             return
         }
 
@@ -146,7 +140,11 @@ class SmsReceiver : BroadcastReceiver() {
 
         val app = context.applicationContext as? ExpenseApplication ?: return
         val repo = app.repository
-        val activeUserId = repo.currentUser.value?.userId ?: "demo_user_123"
+        val activeUserId = repo.getActiveUserId()
+        if (activeUserId.isBlank()) {
+            Log.d("SmsReceiver", "[LOG] No active logged in user found. Skipping SMS processing.")
+            return
+        }
         val timestamp = System.currentTimeMillis()
 
         receiverScope.launch {
